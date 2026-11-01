@@ -18,7 +18,7 @@ flowchart TB
 | Package | Holds |
 |---|---|
 | [`cmd/lazyrex`](../cmd/lazyrex/main.go) | flag parsing, config loading, `--server` and `--ssh` resolution, key overrides, the policy from `$REX_BLOCK`, and the SSH environment; exit status 2 on any of them failing |
-| `pkg/rex` | `Commands` (every invocation lazyrex makes), `Policy` (the safety layer), `Client` (prepare, confirm, run, log), transports, SSH probes and tunnels, the event `Supervisor` and `Refresher`, exit-code mapping, JSON parsers |
+| `pkg/rex` | `Commands` (every `rex` invocation lazyrex makes), `Policy` (the safety layer), `Client` (prepare, confirm, run, log), transports, SSH probes and tunnels, the event `Supervisor` and `Refresher`, exit-code mapping, JSON parsers |
 | `pkg/gui` | `State` (everything the views render), `Controller` (actions, refreshes, targets, config edits), the bindings, popups, layout, and the gocui app |
 | `pkg/config` | the config file: defaults, validation, comment-keeping atomic edits of `targets`, and the `Host` names of `~/.ssh/config` |
 | `pkg/render` | sanitizers for captures (colors kept), log text and one-line labels |
