@@ -63,7 +63,7 @@ The Targets **Keymap & Actions** tab lists the same actions with their tags, and
 ## Client actions
 
 - **Client actions** (Clients `a`) are listed fresh from `rex -C CLIENT actions --json`, tagged like server actions.
-- A client action runs as `rex -C CLIENT do NAME --args JSON`, after checking right before the call that the client still offers it. Its output goes to the command log.
+- A client action runs as `rex -C CLIENT do NAME --args JSON`, or `rex -C CLIENT do NAME` when it takes no arguments, after checking right before the call that the client still offers it. Its output goes to the command log.
 - The Clients **Actions** tab lists them for the selected client.
 
 ## Forms
