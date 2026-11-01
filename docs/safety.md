@@ -1,10 +1,10 @@
 # Safety
 
-> **One policy checks every call lazyrex makes, whether it comes from a key, an `x` menu, a form or the palette: some operations are always refused, destructive ones show the exact command first, nothing touches lazyrex's own block, and payloads never reach the command log.** This page lists every rule, so you know what a key can and cannot do before you press it.
+> **One policy checks every `rex` command lazyrex runs, whether it comes from a key, an `x` menu, a form or the palette: some operations are always refused, destructive ones show the exact command first, nothing touches lazyrex's own block, and the text of `send` and the payloads of `api call` and `do` never reach the command log.** The `ssh` probes and tunnel of an SSH target are checked apart, and every other argument is logged as typed. This page lists every rule, so you know what a key can and cannot do before you press it.
 
 ## What lazyrex never does
 
-- Start a server you did not ask for: every call passes `--timeout` and `--autostart=false`, except `server start`, which has no `--autostart=false` and runs only when you ask for it and confirm it.
+- Start a server you did not ask for: every `rex` command passes `--timeout` and `--autostart=false`, except `server start`, which has no `--autostart=false` and runs only when you ask for it and confirm it.
 - Change hosts, pairing, listeners or Tailscale settings, by any path.
 - Send input to or close the block it runs in, or kill or close the session or window that holds it.
 - Steal focus from a Rex app: every new window and pane passes `--focus=false`; only `f` and `o` change what an app shows.
@@ -33,7 +33,7 @@ flowchart TB
     confirm --> again{"same target, route and argv, checked again?"}
     allow --> again
     again -->|"no"| deny
-    again -->|"yes"| run["▶️ rex runs, logged with payloads redacted"]
+    again -->|"yes"| run["▶️ rex runs, logged with send text and payloads redacted"]
 ```
 
 Names of API methods, `rex do` actions and client actions are split into words (on `.`, `_`, `-`, `/`, spaces and camelCase, so `checkForUpdates` holds `updates`) and classified:
@@ -80,14 +80,16 @@ When lazyrex runs inside Rex, `$REX_BLOCK` names its own block, shown as `self` 
 ## Targets and transports
 
 - **Native servers**: a `-S` value from the flag, the config or `rex hosts list` stays one argv element, never reaches a shell, and is refused when it is empty, starts with `-`, has outer whitespace or control characters, or is longer than 255 bytes; target names are at most 64 characters. A refused target makes no call.
-- **SSH**: every `ssh` runs with `BatchMode=yes` and `--` right before the destination, which is refused when it is empty, starts with `-`, holds whitespace, control characters or invalid UTF-8, or is longer than 255 bytes; so is a `rex_path` that is not an absolute path. Remote words are single-quoted for a POSIX shell, or must be plain words for another one, and are refused otherwise. The forwarded endpoint must be a `unix://` absolute path, forwarded as one `-L` argument to a socket only lazyrex's user can reach; lazyrex opens no TCP listener. A confirmation shows the very argv that then runs: when the route changes in between (tunnel down, mode change), the command is refused instead. Details: [SSH targets](ssh.md).
+- **SSH**: every `ssh` runs with `BatchMode=yes` and `--` right before the destination, which is refused when it is empty, starts with `-`, holds whitespace, control characters or invalid UTF-8, or is longer than 255 bytes; so is a `rex_path` that is not an absolute path. The forwarded endpoint must be a `unix://` absolute path, forwarded as one `-L` argument to a socket only lazyrex's user can reach; lazyrex opens no TCP listener. A confirmation shows the very argv that then runs: when the route changes in between (tunnel down, mode change), the command is refused instead. Details: [SSH targets](ssh.md).
+- **The remote login shell**: ssh joins the words after the destination into one command line that the remote login shell parses. So over ssh exec each word of a `rex` command is single-quoted for a POSIX login shell, or must be a plain word (letters, digits and `._+@/=:,-`) for another one, and is refused otherwise.
+- **SSH plumbing outside the policy**: the two probes and the `ssh -N` tunnel are not `rex` commands. They skip the policy and the `rex` global flags, and are built by lazyrex alone: a destination checked when the target is built, fixed probe command lines (`echo "$SHELL"`, then `command -v rex` with a list of known paths), and a tunnel from a socket in lazyrex's private runtime directory to an endpoint that passed the checks above. The probes time out after `rex.timeout` plus 8s, and both are logged like any call.
 - **Pinned target**: a command runs only on the target and server instance lazyrex last observed when its selection was read: when you pressed the key, or opened the palette or a form that reads Rex first (resize, server and client actions, `o`). A result read after the target changed is dropped. A command is refused, with nothing run, once lazyrex has observed another server instance or the target going offline, or another target activated, since then. That is checked when the form completes and again right before the `rex` process starts, after any confirmation. A restart lazyrex has not observed yet (before the event stream drops or the next poll) is not detected.
 
 ## Processes, logs and screens
 
-- **No shell**: every process runs from an argv, with no shell and no stdin.
-- **Child environment**: `REX_CLIENT`, `REX_SESSION` and `REX_BLOCK` are removed from the environment of every `rex` that lazyrex runs, so no call falls back to lazyrex's own pane, session or client. `REX_SERVER` is kept.
-- **Redaction**: the text of `send`, and everything after the method or action name of `api call`, `do` and `-C CLIENT do` (JSON, `--args`, and the values of `KEY=VALUE` pairs, whose keys stay visible), is shown as `<redacted N bytes>` in confirmations and in the command log, quoted or not inside an `ssh` argv.
+- **No local shell**: every process, `rex` or `ssh`, runs from an argv, with no local shell and no stdin. Only the remote login shell of an SSH target parses a command line, as above.
+- **Child environment**: `REX_CLIENT`, `REX_SESSION` and `REX_BLOCK` are removed from the environment of every process that lazyrex runs, so no call falls back to lazyrex's own pane, session or client. `REX_SERVER` is kept.
+- **Redaction**: the text of `send`, and everything after the method or action name of `api call`, `do` and `-C CLIENT do` (JSON, `--args`, and the values of `KEY=VALUE` pairs, whose keys stay visible), is shown as `<redacted N bytes>` in confirmations and in the command log, quoted or not inside an `ssh` argv. Nothing else is redacted: a new pane's command, labels, names, directories, servers, hosts and the `ssh` probes appear as typed, so keep secrets out of a pane command.
 - **Sanitizing**: every displayed argv, stderr, title, label and schema text is stripped of escape sequences and control characters. Captures keep colors only.
 - **IDs**: lazyrex names every session, window, block and client by its full ID, never by a label or the current one.
 

@@ -50,7 +50,7 @@ sequenceDiagram
     end
     C->>P: RunPrepared, on a worker
     P->>P: same transport, decide again, same route generation and argv, then the guard
-    P->>R: Run(argv): no shell, no stdin, REX_CLIENT, REX_SESSION and REX_BLOCK removed
+    P->>R: Run(argv): no local shell, no stdin, REX_CLIENT, REX_SESSION and REX_BLOCK removed
     R-->>P: stdout, stderr, exit code
     P-->>C: Outcome: exit kind, toast line, command log entry
     C->>C: Update on the UI goroutine
@@ -58,6 +58,7 @@ sequenceDiagram
 
 - [pkg/rex/commands.go](../pkg/rex/commands.go) builds each `Cmd`: its argv after the global flags, its kind (read, mutate, destroy, input, server start or stop, API), the blocks it touches, and what to redact.
 - [pkg/rex/safety.go](../pkg/rex/safety.go) classifies it; [pkg/rex/client.go](../pkg/rex/client.go) adds `--autostart=false` (except `server start`) and `--timeout`, prepares the argv and display, and runs it at most `rex.timeout` plus 2s (plus 6s over ssh exec).
+- The `ssh` probes and tunnel are not `rex` commands: [pkg/rex/sshlink.go](../pkg/rex/sshlink.go) runs them through `Client.runArgv` and `Client.streamArgv`, which skip `Prepare` and the global flags but use the same Runner and command log. Their argv comes from [pkg/rex/ssh.go](../pkg/rex/ssh.go): a destination checked when the target is built, fixed probe command lines, and an endpoint that `NormalizeEndpoint` accepted. Over ssh exec, the remote login shell parses the quoted words ([Safety](safety.md)).
 - [pkg/rex/exitcode.go](../pkg/rex/exitcode.go) maps exit codes: 2 usage, 3 not found, 4 unreachable, 130 interrupted, 255 ssh on an SSH route, -1 start error ([Troubleshooting](troubleshooting.md)).
 
 ## Transports

@@ -28,7 +28,7 @@ lazyrex [--server|-S TARGET | --ssh HOST] [--config PATH] [--version]
 
 A bad config, a key bound twice in one panel, or a server or SSH destination lazyrex refuses exits with status 2 and says why. How targets are chosen: [Targets](targets.md). Every config key: [Configuration](configuration.md).
 
-On start, lazyrex reads `rex version` and `rex hosts list` from the local server, then the active target's `whoami` and `server status`, its sessions and its clients, and subscribes to `rex events --all --json`. Every call but `server start` passes `--autostart=false`, so a stopped local server stays stopped: that is normal (it exits when its last session ends) and never reported as an error. Press `s` on the Targets panel to start it, after confirming the exact command.
+On start, lazyrex reads `rex version` and `rex hosts list` from the local server, then the active target's `whoami` and `server status`, its sessions and its clients, and subscribes to `rex events --all --json`. Every `rex` command but `server start` passes `--autostart=false`, so a stopped local server stays stopped: that is normal (it exits when its last session ends) and never reported as an error. Press `s` on the Targets panel to start it, after confirming the exact command.
 
 ## The screen
 

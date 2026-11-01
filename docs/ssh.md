@@ -42,7 +42,7 @@ flowchart TB
     posix -->|"no"| noExec["error: exec mode needs a POSIX login shell"]
 ```
 
-**Probes**: once per target (and per `rex_path`), lazyrex reads the remote login shell (`echo "$SHELL"`) and, unless `rex_path` is set, looks for `rex` (`command -v rex`, else whichever of `/usr/local/bin/rex`, `/opt/homebrew/bin/rex`, the Rex.app binary and the Rex Beta.app one exists, preferred in that order). The Rex Beta.app path has spaces: it is single-quoted, one word for POSIX shells and fish. Results, failures included, are kept: polls do not probe again, and `c` on the row clears them and probes again.
+**Probes**: once per target (and per `rex_path`), lazyrex reads the remote login shell (`echo "$SHELL"`) and, unless `rex_path` is set, looks for `rex` (`command -v rex`, else whichever of `/usr/local/bin/rex`, `/opt/homebrew/bin/rex`, the Rex.app binary and the Rex Beta.app one exists, preferred in that order). The Rex Beta.app path has spaces: it is single-quoted, one word for POSIX shells and fish. Results, failures included, are kept: polls do not probe again, and `c` on the row clears them and probes again. The probes and the tunnel are `ssh` commands lazyrex builds itself, not `rex` commands: they skip the safety policy and get no `rex` flags, and how they are checked is in [Safety](safety.md).
 
 An SSH row that is not active is read the same way, with `whoami` and `server status` over ssh exec: it never starts a tunnel.
 
@@ -74,7 +74,7 @@ sequenceDiagram
 
 ## Exec mode
 
-- Every call runs `ssh remote-host REX ARGS…`, each word quoted for the remote shell.
+- Every call runs `ssh remote-host REX ARGS…`. ssh joins those words into one command line for the remote login shell, so lazyrex single-quotes each one.
 - Exec calls share one connection per host (`ControlMaster=auto`, `ControlPersist=60s`), its control socket under `$XDG_RUNTIME_DIR/lazyrex`.
 - It needs a POSIX login shell (sh, bash, zsh, dash, ksh, ksh93, mksh, ash, yash). With another shell (fish, nushell, or one the probe could not read) exec mode is refused, and forward mode sends over ssh only plain words (letters, digits and `._+@/=:,-`), unquoted.
 

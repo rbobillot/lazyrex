@@ -9,7 +9,7 @@ lazyrex lists sessions, windows, blocks and clients in side panels, shows the se
 ```mermaid
 flowchart LR
     you(["👤 You"]) --> lazyrex["🖥️ lazyrex"]
-    lazyrex --> policy{"🛡️ one safety policy"}
+    lazyrex --> policy{"🛡️ safety policy: every rex command"}
     policy --> cli["rex CLI"]
     policy --> sshexec["ssh"]
     cli -->|"local"| localsrv[("local Rex server")]
@@ -17,6 +17,7 @@ flowchart LR
     cli -->|"forward mode: rex -S unix://socket"| tunnel["ssh -N tunnel"]
     tunnel --> remote[("Rex on remote-host")]
     sshexec -->|"exec mode: ssh remote-host rex ..."| remote
+    lazyrex -.->|"ssh probes and tunnel: fixed argv, checked apart"| tunnel
 ```
 
 ## Install
@@ -67,7 +68,7 @@ lazyrex --ssh user@remote-host   # start on an SSH target
 
 ## Safety
 
-lazyrex never starts a server you did not ask for (every other call passes `--autostart=false`), never changes hosts, pairing, listeners or Tailscale, never sends input to or closes the block it runs in, and never steals focus from a Rex app. Destructive commands show the exact command before they run, and payloads are redacted in the command log. Details: [Safety](docs/safety.md).
+lazyrex never starts a server you did not ask for (every other `rex` command passes `--autostart=false`), never changes hosts, pairing, listeners or Tailscale, never sends input to or closes the block it runs in, and never steals focus from a Rex app. Destructive commands show the exact command before they run. The command log redacts the text of `send` and the payloads of `api call` and `do`, but shows every other argument as typed, a new pane's command included. Details: [Safety](docs/safety.md).
 
 ## Development
 

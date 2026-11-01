@@ -31,7 +31,7 @@ Every key is optional. Keys lazyrex does not know are ignored, and kept when laz
 | Key | Default | Meaning |
 |---|---|---|
 | `rex.binary` | `rex` | the `rex` binary, looked up in `PATH` unless absolute; not empty |
-| `rex.timeout` | `10s` | the `--timeout` of every call; event streams are not limited by it. Positive |
+| `rex.timeout` | `10s` | the `--timeout` of every `rex` command (the `ssh` probes time out after it plus 8s); event streams are not limited by it. Positive |
 | `refresh.poll_interval` | `5s` | full refresh while no event stream is up, and the Clients panel timer. Positive |
 | `refresh.capture_interval` | `1s` | Capture tab refresh while it is visible. Positive |
 | `refresh.debounce` | `200ms` | events of one session within this window cause a single inspect. Positive |
