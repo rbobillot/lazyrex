@@ -67,7 +67,7 @@ lazyrex --ssh user@remote-host   # start on an SSH target
 
 ## Safety
 
-lazyrex never starts a server you did not ask for (every call passes `--autostart=false`), never changes hosts, pairing, listeners or Tailscale, never sends input to or closes the block it runs in, and never steals focus from a Rex app. Destructive commands show the exact command before they run, and payloads are redacted in the command log. Details: [Safety](docs/safety.md).
+lazyrex never starts a server you did not ask for (every other call passes `--autostart=false`), never changes hosts, pairing, listeners or Tailscale, never sends input to or closes the block it runs in, and never steals focus from a Rex app. Destructive commands show the exact command before they run, and payloads are redacted in the command log. Details: [Safety](docs/safety.md).
 
 ## Development
 

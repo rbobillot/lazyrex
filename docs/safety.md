@@ -4,7 +4,7 @@
 
 ## What lazyrex never does
 
-- Start a server you did not ask for: every call passes `--autostart=false` and `--timeout`, except `server start`, which runs only when you ask for it and confirm it.
+- Start a server you did not ask for: every call passes `--timeout` and `--autostart=false`, except `server start`, which has no `--autostart=false` and runs only when you ask for it and confirm it.
 - Change hosts, pairing, listeners or Tailscale settings, by any path.
 - Send input to or close the block it runs in, or kill or close the session or window that holds it.
 - Steal focus from a Rex app: every new window and pane passes `--focus=false`; only `f` and `o` change what an app shows.
