@@ -703,6 +703,52 @@ func TestPublishRefuses(t *testing.T) {
 	}
 }
 
+func TestWorkflowPublishIgnoresGitConfig(t *testing.T) {
+	run := publishStep(t).Run
+	if !regexp.MustCompile(`(?m)^export .*GIT_CONFIG_NOSYSTEM=1`).MatchString(run) ||
+		!regexp.MustCompile(`(?m)^export .*GIT_CONFIG_GLOBAL=/dev/null`).MatchString(run) {
+		t.Error("Publish does not export GIT_CONFIG_NOSYSTEM=1 and GIT_CONFIG_GLOBAL=/dev/null")
+	}
+	if !regexp.MustCompile(`wiki_git clone .*--no-checkout`).MatchString(run) {
+		t.Error("the wiki clone checks out a working tree")
+	}
+}
+
+// The runner's system or global git config may define filters (git-lfs registers one); a wiki .gitattributes
+// naming them must not run any during the publication.
+func TestPublishIgnoresWikiFilters(t *testing.T) {
+	p := newPublish(t)
+	p.handEdit(t, map[string]string{
+		".gitattributes": "* filter=evil\n",
+		".lfsconfig":     "[lfs]\n\turl = https://evil.example/\n",
+		"Home.md":        "Welcome, filtered\n",
+	})
+	writeFile(t, p.dir, "evil.gitconfig", "[filter \"evil\"]\n"+
+		"\tsmudge = touch \"$FIX_DIR/smudged\"; cat\n\tclean = touch \"$FIX_DIR/cleaned\"; cat\n\trequired = true\n")
+	delete(p.env, "GIT_CONFIG_NOSYSTEM")
+	p.env["GIT_CONFIG_SYSTEM"] = filepath.Join(p.dir, "evil.gitconfig")
+	p.env["GIT_CONFIG_GLOBAL"] = filepath.Join(p.dir, "evil.gitconfig")
+	r := p.run(t)
+	wantCode(t, r, 0)
+	for _, marker := range []string{"smudged", "cleaned"} {
+		if _, err := os.Stat(filepath.Join(p.dir, marker)); err == nil {
+			t.Errorf("the wiki's filter ran (%s)", marker)
+		}
+	}
+	if got := p.wikiFiles(t); !slices.Equal(got, []string{"Home.md", "_Sidebar.md", "a.md"}) {
+		t.Errorf("wiki tree %v, want the artifact only", got)
+	}
+	msg := p.gitWiki(t, "log", "-1", "--format=%B", "master")
+	for _, name := range []string{".gitattributes", ".lfsconfig", "Home.md"} {
+		if !strings.Contains(msg, "\n"+name) {
+			t.Errorf("message lacks %s: %q", name, msg)
+		}
+	}
+	if got := p.gitWiki(t, "cat-file", "blob", "master:Home.md"); got+"\n" != pageWithBanner("Home") {
+		t.Errorf("Home.md in the wiki: %q", got)
+	}
+}
+
 func credentialHelper(t *testing.T) string {
 	t.Helper()
 	h := publishStep(t).Env["CREDENTIAL_HELPER"]

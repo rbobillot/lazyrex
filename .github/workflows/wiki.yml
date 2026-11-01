@@ -96,6 +96,8 @@ jobs:
           set -euo pipefail
           unset GIT_TRACE GIT_TRACE_CURL GIT_CURL_VERBOSE GIT_TRACE_PACKET GIT_TRACE_REDACT GIT_TRACE_SETUP GIT_TRACE_PERFORMANCE
           export GIT_TERMINAL_PROMPT=0
+          # The runner's git config may define filters (git-lfs) that a wiki .gitattributes could name.
+          export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
           die() { printf 'wiki: %s\n' "$1" >&2; exit 1; }
           wiki_git() {
             git -c credential.helper= -c "credential.helper=${CREDENTIAL_HELPER}" -c credential.useHttpPath=true "$@"
@@ -131,7 +133,8 @@ jobs:
           work=$(mktemp -d)
           trap 'rm -rf -- "$work"' EXIT
           wiki=$work/wiki
-          wiki_git clone --quiet --depth 1 --no-tags -- "$WIKI_REMOTE" "$wiki"
+          # No checkout: the index starts empty, so every wiki page not in the artifact shows as deleted.
+          wiki_git clone --quiet --no-checkout --depth 1 --no-tags -- "$WIKI_REMOTE" "$wiki"
           branch=$(git -C "$wiki" symbolic-ref --short HEAD)
           find "$wiki" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf -- {} +
           cp -- "${pages[@]}" "$wiki/"
