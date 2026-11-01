@@ -44,4 +44,4 @@ flowchart LR
 | Rules for coding agents | [AGENTS.md](../AGENTS.md) |
 | The license | [Apache-2.0](../LICENSE) |
 
-These pages are plain Markdown under `docs/` with relative links: to change one, edit its source there.
+These pages are plain Markdown under `docs/` with relative links, mirrored to the [wiki](https://github.com/rbobillot/lazyrex/wiki) by CI: to change one, edit its source there, never the wiki.

@@ -66,6 +66,8 @@ lazyrex --ssh user@remote-host   # start on an SSH target
 | [Architecture](docs/architecture.md) | Packages, transports, events and polling |
 | [Development](docs/development.md) | Building, tests, the multi-agent harness |
 
+The same pages are published as the [wiki](https://github.com/rbobillot/lazyrex/wiki), generated from `docs/` by CI: edit `docs/`, never the wiki.
+
 ## Safety
 
 lazyrex never starts a server you did not ask for (every other `rex` command passes `--autostart=false`), never changes hosts, pairing, listeners or Tailscale, never sends input to or closes the block it runs in, and never steals focus from a Rex app. Destructive commands show the exact command before they run. The command log redacts the text of `send` and the payloads of `api call` and `do`, but shows every other argument as typed, a new pane's command included. Details: [Safety](docs/safety.md).

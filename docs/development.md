@@ -49,6 +49,10 @@ Agents must use the mise form ([AGENTS.md](../AGENTS.md)); with Go 1.26 in `PATH
 
 Any change beyond a trivial one-liner follows the `multi-agent` skill ([.agents/skills/multi-agent/SKILL.md](../.agents/skills/multi-agent/SKILL.md)): `scripts/harness.sh` starts a run, prints which roles and models plan, attack the plan, implement (acceptance tests first, then frozen) and review it, with every critic from another model family than the Implementer, and `scripts/harness.sh gate` must pass before the work is called done. Models, roles and budgets live in `.agents/harness/*.tsv`; after a change to the harness, `scripts/harness.sh check` and `scripts/test/harness.sh` must pass. The rules: [AGENTS.md](../AGENTS.md).
 
+## The wiki
+
+The [wiki](https://github.com/rbobillot/lazyrex/wiki) is generated from `docs/` by [the `wiki` workflow](../.github/workflows/wiki.yml) on every push to `main`, daily and on demand. **Never edit the wiki**: the next run overwrites or removes any page edited or created there, and the wiki history keeps what it replaced. Each page opens with a banner naming its source commit. Pull requests render it too, so a broken link fails before merge. Check the committed docs locally with `mise exec go@1.26 -- go run ./tools/wikisync`, or write the pages with `-out /tmp/wiki` (an absent or empty directory). In `docs/`, use inline relative links to tracked files, fences at the start of the line, code spans on one line, no indentation of 4 or more outside fences, and a plain-text `# ` title. The [renderer](../tools/wikisync) refuses reference links, link titles, `<a>`/`<img>` links, absolute paths and anything it does not parse.
+
 ## Contributing
 
 - Write the tests first for a behavior change, then the code, in small Conventional Commits (`feat:`, `fix:`, `docs:`, `test:`...).
