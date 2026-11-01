@@ -749,6 +749,32 @@ func TestPublishIgnoresWikiFilters(t *testing.T) {
 	}
 }
 
+func TestPublishWikiGitlink(t *testing.T) {
+	p := newPublish(t)
+	w := filepath.Join(t.TempDir(), "w")
+	gitIn(t, filepath.Dir(w), nil, "clone", "-q", p.wiki, "w")
+	gitIn(t, w, nil, "update-index", "--add", "--cacheinfo", "160000,"+strings.Repeat("a", 40)+",sub")
+	gitIn(t, w, nil, "commit", "-q", "-m", "gitlink")
+	gitIn(t, w, nil, "push", "-q", "origin", "master")
+
+	r := p.run(t)
+	wantCode(t, r, 0)
+	if !strings.Contains(r.stdout, "wiki: sub had no generated banner") {
+		t.Errorf("the gitlink is not reported as hand-made: %q", r.stdout)
+	}
+	if got := p.wikiFiles(t); !slices.Equal(got, []string{"Home.md", "_Sidebar.md", "a.md"}) {
+		t.Errorf("wiki tree %v, want the artifact only", got)
+	}
+	if msg := p.gitWiki(t, "log", "-1", "--format=%B", "master"); !strings.Contains(msg, "\nsub") {
+		t.Errorf("message lacks the gitlink: %q", msg)
+	}
+	r = p.run(t)
+	wantCode(t, r, 0)
+	if !strings.Contains(r.stdout, "wiki: up to date") {
+		t.Errorf("second run: %q", r.stdout)
+	}
+}
+
 func credentialHelper(t *testing.T) string {
 	t.Helper()
 	h := publishStep(t).Env["CREDENTIAL_HELPER"]

@@ -147,7 +147,12 @@ jobs:
           git -C "$wiki" diff --cached --name-only -z --no-renames --diff-filter=DM >"$work/changed"
           handmade=""
           while IFS= read -r -d '' path; do
-            first=$(git -C "$wiki" cat-file blob "HEAD:$path" | sed -n 1p)
+            # A gitlink names a commit the wiki may not hold: anything but a blob counts as hand-made.
+            first=""
+            kind=$(git -C "$wiki" cat-file -t "HEAD:$path" 2>/dev/null) || kind=other
+            if [[ $kind == blob ]]; then
+              first=$(git -C "$wiki" cat-file blob "HEAD:$path" | sed -n 1p)
+            fi
             if [[ $first != '> Generated from '* ]]; then
               printf 'wiki: %q had no generated banner: replaced or removed, kept in the wiki history\n' "$path"
               handmade+="$(printf '%q' "$path")"$'\n'
