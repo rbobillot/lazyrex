@@ -26,10 +26,12 @@ Build to `/tmp`, never into the repository. Without `-ldflags`, `lazyrex --versi
 ## Tests
 
 ```sh
-go test ./...
-go test -race ./...
-LAZYREX_SMOKE=1 go test -tags smoke ./pkg/rex/...   # read-only calls against the real rex
+mise exec go@1.26 -- go test ./...
+mise exec go@1.26 -- go test -race ./...
+LAZYREX_SMOKE=1 mise exec go@1.26 -- go test -tags smoke ./pkg/rex/...   # read-only calls against the real rex
 ```
+
+Agents must use the mise form ([AGENTS.md](../AGENTS.md)); with Go 1.26 in `PATH`, plain `go` works the same.
 
 - Unit tests never run the real `rex` or `ssh`: they drive the real controller and client through `rextest.FakeRunner`, which answers each argv with canned output, often a fixture from `testdata/`, a fake clock, and a headless gocui ([Architecture](architecture.md)).
 - The smoke test is opt-in (`-tags smoke` and `LAZYREX_SMOKE=1`). It runs `/usr/local/bin/rex`, else the `rex` in `PATH`, and only reads: `version`, `whoami`, `ls`, `server status`, `hosts list`, then `session inspect` and `block ls` of each session through the strict readers lazyrex uses before a kill. It checks that every argv carries `--autostart=false` and never `-S` or `hosts check`, accepts a stopped server, and skips when `rex` is not installed.

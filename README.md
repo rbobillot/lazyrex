@@ -73,11 +73,11 @@ lazyrex never starts a server you did not ask for (every other `rex` command pas
 ## Development
 
 ```sh
-go test ./...
-go build -o /tmp/lazyrex ./cmd/lazyrex
+mise exec go@1.26 -- go test ./...
+mise exec go@1.26 -- go build -o /tmp/lazyrex ./cmd/lazyrex
 ```
 
-Tests never run the real `rex` except an opt-in, read-only smoke test. See [Development](docs/development.md) and [AGENTS.md](AGENTS.md).
+Agents working here run Go through mise ([AGENTS.md](AGENTS.md)); with Go 1.26 in `PATH`, plain `go test ./...` works too. Tests never run the real `rex` except an opt-in, read-only smoke test. See [Development](docs/development.md).
 
 ## License
 
