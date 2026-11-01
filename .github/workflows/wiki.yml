@@ -1,0 +1,173 @@
+name: wiki
+
+# Mirrors docs/ to this repository's wiki (docs/development.md#the-wiki). No path filter: a doc link breaks when
+# a file outside docs/ moves, and the daily run reverts hand edits of the wiki.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Publishing runs queue in one group, so a newer commit's run always follows an older one. GitHub keeps a
+# single pending run per group: pull requests get their own, so none replaces a pending publish.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('wiki-pr-{0}', github.event.pull_request.number) || 'wiki' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  render:
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GOTOOLCHAIN: local
+    outputs:
+      source-time: ${{ steps.source.outputs.time }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # banner shas: each page's last commit
+          persist-credentials: false
+          show-progress: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Test the renderer
+        run: |
+          go vet ./tools/wikisync
+          go test ./tools/wikisync
+      - name: Render
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: go run ./tools/wikisync -repo "$REPOSITORY" -out "$RUNNER_TEMP/wiki-pages"
+      - id: source
+        name: Source commit time
+        run: printf 'time=%s\n' "$(git log -1 --format=%ct HEAD)" >>"$GITHUB_OUTPUT"
+      - if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: wiki-pages
+          path: ${{ runner.temp }}/wiki-pages
+          if-no-files-found: error
+          retention-days: 1
+
+  # The only job with contents: write: no checkout, no Go, no build; only the rendered pages and git.
+  publish:
+    needs: render
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: wiki-pages
+          path: ${{ runner.temp }}/wiki-pages
+      - name: Publish
+        env:
+          WIKI_TOKEN: ${{ github.token }}
+          WIKI_PATH: ${{ github.repository }}.wiki.git
+          WIKI_REMOTE: https://github.com/${{ github.repository }}.wiki.git
+          SOURCE_REMOTE: https://github.com/${{ github.repository }}.git
+          SOURCE_SHA: ${{ github.sha }}
+          SOURCE_TIME: ${{ needs.render.outputs.source-time }}
+          PAGES: ${{ runner.temp }}/wiki-pages
+          # Run by git through sh with the action as $1: the token comes from the environment, never from
+          # argv, a URL or a file. Folded: every line must end where a space may join it to the next.
+          CREDENTIAL_HELPER: >-
+            !f() { test "$1" = get || exit 0; test -n "${WIKI_TOKEN-}" || exit 0; test -n "${WIKI_PATH-}" || exit 0;
+            p=; h=; u=; while IFS= read -r l || test -n "$l"; do test -n "$l" || break;
+            case "$l" in protocol=*) p=${l#protocol=};; host=*) h=${l#host=};; path=*) u=${l#path=};; esac; done;
+            if test "$p" = https && test "$h" = github.com && test "$u" = "$WIKI_PATH"; then
+            printf 'username=x-access-token\npassword=%s\n' "$WIKI_TOKEN"; fi; }; f
+        run: |
+          { set +x; } 2>/dev/null
+          set -euo pipefail
+          unset GIT_TRACE GIT_TRACE_CURL GIT_CURL_VERBOSE GIT_TRACE_PACKET GIT_TRACE_REDACT GIT_TRACE_SETUP GIT_TRACE_PERFORMANCE
+          export GIT_TERMINAL_PROMPT=0
+          die() { printf 'wiki: %s\n' "$1" >&2; exit 1; }
+          wiki_git() {
+            git -c credential.helper= -c "credential.helper=${CREDENTIAL_HELPER}" -c credential.useHttpPath=true "$@"
+          }
+          main_sha() {
+            local out sha ref
+            out=$(git ls-remote --heads -- "$SOURCE_REMOTE" main) || die "could not read main from ${SOURCE_REMOTE}"
+            while IFS=$'\t' read -r sha ref; do
+              if [[ $ref == refs/heads/main && $sha =~ ^[0-9a-f]{40}$ ]]; then printf '%s' "$sha"; return 0; fi
+            done <<<"$out"
+            die "no refs/heads/main at ${SOURCE_REMOTE}"
+          }
+          stale() {
+            printf 'wiki: main moved to %s, past %s: the queued run of the newer commit publishes\n' "${1:0:12}" "${SOURCE_SHA:0:12}"
+            exit 0
+          }
+          [[ $SOURCE_SHA =~ ^[0-9a-f]{40}$ ]] || die "bad source sha"
+          [[ $SOURCE_TIME =~ ^[0-9]{1,12}$ ]] || die "bad source time"
+          shopt -s nullglob dotglob
+          pages=("$PAGES"/*)
+          ((${#pages[@]} > 0)) || die "empty artifact"
+          for page in "${pages[@]}"; do
+            name=${page##*/}
+            [[ -f $page && ! -L $page && $name =~ ^(Home|_Sidebar|[a-z0-9][a-z0-9.-]*(_[a-z0-9][a-z0-9.-]*)*)\.md$ ]] ||
+              die "unexpected artifact entry $(printf %q "$name")"
+            first=$(sed -n 1p -- "$page")
+            [[ $first == '> Generated from '* ]] || die "$name has no generated banner"
+          done
+          [[ -f $PAGES/Home.md && -f $PAGES/_Sidebar.md ]] || die "no rendered wiki in the artifact"
+          now=$(main_sha)
+          [[ $now == "$SOURCE_SHA" ]] || stale "$now"
+
+          work=$(mktemp -d)
+          trap 'rm -rf -- "$work"' EXIT
+          wiki=$work/wiki
+          wiki_git clone --quiet --depth 1 --no-tags -- "$WIKI_REMOTE" "$wiki"
+          branch=$(git -C "$wiki" symbolic-ref --short HEAD)
+          find "$wiki" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf -- {} +
+          cp -- "${pages[@]}" "$wiki/"
+          git -C "$wiki" add -A
+          if git -C "$wiki" diff --cached --quiet; then
+            printf 'wiki: up to date at %s\n' "${SOURCE_SHA:0:12}"
+            exit 0
+          fi
+
+          git -C "$wiki" diff --cached --name-only -z --no-renames --diff-filter=DM >"$work/changed"
+          handmade=""
+          while IFS= read -r -d '' path; do
+            first=$(git -C "$wiki" cat-file blob "HEAD:$path" | sed -n 1p)
+            if [[ $first != '> Generated from '* ]]; then
+              printf 'wiki: %q had no generated banner: replaced or removed, kept in the wiki history\n' "$path"
+              handmade+="$(printf '%q' "$path")"$'\n'
+            fi
+          done <"$work/changed"
+          message="docs: mirror docs/ at ${SOURCE_SHA:0:12}"
+          [[ -z $handmade ]] || message+=$'\n\n'"Hand-made pages replaced or removed (kept in this history):"$'\n'"$handmade"
+          bot='github-actions[bot]'
+          mail='41898282+github-actions[bot]@users.noreply.github.com'
+          GIT_AUTHOR_NAME=$bot GIT_AUTHOR_EMAIL=$mail GIT_AUTHOR_DATE="@${SOURCE_TIME} +0000" \
+            GIT_COMMITTER_NAME=$bot GIT_COMMITTER_EMAIL=$mail GIT_COMMITTER_DATE="@${SOURCE_TIME} +0000" \
+            git -C "$wiki" -c commit.gpgSign=false commit --quiet --no-verify -m "$message"
+
+          now=$(main_sha)
+          [[ $now == "$SOURCE_SHA" ]] || stale "$now"
+          wiki_git -C "$wiki" push --quiet origin "HEAD:refs/heads/${branch}" ||
+            die "the wiki refused the push (it moved meanwhile?): nothing forced, the next run repairs it"
+          # The wiki is published: a failure to re-read main must not turn the job red.
+          if after=$(main_sha); then
+            if [[ $after != "$SOURCE_SHA" ]]; then
+              printf 'wiki: main moved to %s during the publication: the queued run repairs the wiki\n' "${after:0:12}"
+            fi
+          else
+            printf 'wiki: could not re-read main after publishing: if it moved, its queued run repairs the wiki\n'
+          fi
+          printf 'wiki: published %s\n' "${SOURCE_SHA:0:12}"
