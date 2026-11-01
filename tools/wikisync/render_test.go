@@ -330,6 +330,37 @@ func TestRefusals(t *testing.T) {
 	})
 }
 
+func TestImageTargets(t *testing.T) {
+	files := map[string]string{
+		"![d](b.md)":            "![d](" + u + "/raw/main/docs/b.md)",
+		"![d](../LICENSE)":      "![d](" + u + "/raw/main/LICENSE)",
+		"![d](img/a.png#x)":     "![d](" + u + "/raw/main/docs/img/a.png)",
+		"![d](https://x/y.png)": "![d](https://x/y.png)",
+	}
+	for in, want := range files {
+		t.Run(in, func(t *testing.T) {
+			got, findings := renderA(t, in+"\n")
+			if findings != nil || got != want+"\n" {
+				t.Fatalf("got %q %v, want %q", got, findings, want+"\n")
+			}
+		})
+	}
+	dirs := map[string]string{
+		"![d](.)":           "docs is a directory",
+		"![d](index.md/..)": "docs is a directory",
+		"![d](..)":          ". is a directory",
+		"![d](img)":         "docs/img is a directory",
+		"![d](../pkg/rex/)": "pkg/rex is a directory",
+		"[![d](.)](b.md)":   "docs is a directory",
+	}
+	for in, msg := range dirs {
+		t.Run(in, func(t *testing.T) { wantOneFinding(t, in+"\n", 1, msg) })
+	}
+	t.Run("missing", func(t *testing.T) {
+		wantOneFinding(t, "![d](gone.png)\n", 1, "broken link gone.png: docs/gone.png is not tracked")
+	})
+}
+
 func TestTitles(t *testing.T) {
 	for _, h1 := range []string{"# A [b](b.md)", "# `x`", "# a_b", "# a\\b", "# a*b", "# a|b", "# a<b>", "#", "# "} {
 		t.Run(h1, func(t *testing.T) { wantOneFinding(t, h1+"\n", 1, "title: plain text only") })

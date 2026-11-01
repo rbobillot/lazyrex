@@ -278,6 +278,9 @@ func (s *scope) destination(from, raw string, image bool) (string, string) {
 	switch {
 	case image && s.files[p]:
 		return base + "/raw/main/" + p, ""
+	case image && s.dirs[p]:
+		return "", "image " + raw + ": " + p + " is a directory, not a tracked file"
+	case image:
 	case s.pages[p] != "":
 		return base + "/wiki/" + s.pages[p] + frag, ""
 	case s.dirs[p] && s.pages[path.Join(p, "index.md")] != "":
