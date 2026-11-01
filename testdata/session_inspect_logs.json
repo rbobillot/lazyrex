@@ -1,0 +1,24 @@
+{
+  "revision": 3,
+  "session_id": "session:02bbbb",
+  "label": "logs",
+  "active_window_id": "window:02w1",
+  "windows": [
+    {
+      "window_id": "window:02w1",
+      "label": "tail",
+      "focused_block_id": "block:02b1",
+      "layers": [
+        {
+          "layer_id": "layer:02l1",
+          "kind": "tiled",
+          "bounds": {"x": 0, "y": 0, "width": 200, "height": 50},
+          "layout": {"rect": {"x": 0, "y": 0, "width": 200, "height": 50}, "block_id": "block:02b1"},
+          "blocks": [
+            {"block_id": "block:02b1", "label": "tail", "creator_name": "terminal", "flavor": "shell", "host_id": "host:01hz", "owner": "user"}
+          ]
+        }
+      ]
+    }
+  ]
+}

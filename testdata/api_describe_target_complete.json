@@ -1,0 +1,13 @@
+{
+  "name": "target.complete",
+  "input_schema": {
+    "type": "object",
+    "required": ["prefix"],
+    "properties": {
+      "prefix": {"type": "string", "description": "text to complete"},
+      "session_id": {"type": "string"}
+    }
+  },
+  "output_schema": {},
+  "zz_future": 1
+}

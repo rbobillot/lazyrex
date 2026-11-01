@@ -1,0 +1,10 @@
+# Roles of the harness, one `role<TAB>access<TAB>output<TAB>description` line each. access: ro (never edits files)
+# or rw. output: findings (first line "Findings: N BLOCKER, M SHOULD-FIX, K NIT", recorded as N,M,K) or done.
+# Each role's instructions: .agents/harness/roles/<role>.md, copied into every generated agent file.
+proposer	ro	done	Plans a change: resolves open questions, file-by-file plan, test matrix, weakest decisions. Never edits.
+challenger	ro	findings	Attacks a plan from another model family than the Proposer's. Never edits.
+implementer	rw	done	Writes the acceptance tests first, then the code, in small commits with narrow checks green.
+critic	ro	findings	Adversarial review of the diff from another model family than the Implementer's. Never edits.
+security-critic	ro	findings	Reviews the diff as an attacker (secrets, injection, permissions, harness bypass). Never edits.
+explorer	ro	done	Answers closed read-only questions fast: where is X, what calls Y, what does this log say.
+mechanical	rw	done	Applies mechanical edits with no judgment: renames, formatting, version bumps.

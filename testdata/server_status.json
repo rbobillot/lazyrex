@@ -1,0 +1,15 @@
+{
+  "endpoint": "unix:///run/user/1000/rex/server.sock",
+  "pid": 4242,
+  "instance_id": "inst:01hz",
+  "host_id": "host:01hz",
+  "started_at": "2026-01-01T10:00:00Z",
+  "rex_version": "0.0.1000000000-gabc1234",
+  "api_revision": 9,
+  "exit_empty": true,
+  "session_count": 2,
+  "log_path": "/run/user/1000/rex/server.log",
+  "tailscale": {"state": "off", "allow_tailnet_members": false, "zz_future": 1},
+  "you": {"principal": "user", "zz_future": 1},
+  "zz_future": [1, 2, 3]
+}

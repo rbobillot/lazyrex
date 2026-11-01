@@ -1,0 +1,74 @@
+# Sample lazyrex configuration. Copy it to ~/.config/lazyrex/config.yml
+# (or $XDG_CONFIG_HOME/lazyrex/config.yml), or pass --config PATH.
+# Every key is optional; the values below are the defaults.
+
+rex:
+  # rex binary, looked up in PATH unless absolute.
+  binary: rex
+  # Per-call --timeout. Event streams are not limited by it.
+  timeout: 10s
+
+refresh:
+  # Full refresh while no event stream is up, and the Clients panel timer.
+  poll_interval: 5s
+  # Capture tab refresh while it is visible.
+  capture_interval: 1s
+  # Events of one session within this window cause a single inspect.
+  debounce: 200ms
+
+capture:
+  # Lines of scrollback kept for the Capture tab (1 to 1000000).
+  max_lines: 5000
+  # vt keeps colors; text is plain. lazyrex falls back to text if vt fails.
+  format: vt
+
+safety:
+  # Exact update/install action names to let through to the confirmation
+  # prompt (e.g. checkForUpdates), from the palette, x menus and Clients a.
+  # Host, pairing, listener and Tailscale operations are always denied, even
+  # when listed here.
+  allow_actions: []
+
+# Key overrides: panel -> action -> key or list of keys. An override replaces
+# all default keys of that action. Panels: universal, targets, sessions,
+# windows, blocks, clients, main. Keys: one character, or <enter>, <esc>,
+# <tab>, <backtab>, <space>, <up>, <down>, <left>, <right>, <pgup>,
+# <pgdown>, <home>, <end>, <c-a> ... <c-z> (not <c-h>, <c-i>, <c-m>, which
+# terminals send as backspace, tab and enter). The action names are listed
+# in the README keymap. A key bound twice in one panel is an error.
+keybindings: {}
+#  universal:
+#    refresh: <c-r>
+#  blocks:
+#    sendText: t
+#  sessions:
+#    showInApp: O
+
+# Targets listed in the Targets panel besides the local server and the hosts
+# rex hosts list discovers. kind: native reaches a Rex server through
+# rex -S SERVER, where server is a rex hosts label, a host:port or an
+# http(s) URL. One kind: local entry may rename the local target (no
+# server). Names are unique, case-insensitively, and at most 64 characters.
+# kind: ssh reaches Rex on another machine through ssh (BatchMode=yes: it
+# never prompts). ssh_host is a Host from ~/.ssh/config or user@host, with no
+# leading '-' and no whitespace. mode: forward (default) forwards the remote
+# Rex socket into $XDG_RUNTIME_DIR/lazyrex and uses rex -S unix://...; it
+# falls back to exec only when the remote endpoint cannot be forwarded.
+# mode: exec runs the remote rex through ssh for every call and needs a POSIX
+# login shell (sh, bash, zsh...). rex_path, an absolute path, skips probing
+# for the remote rex. a, e and d in the Targets panel edit this list, keeping
+# comments; lazyrex never changes rex hosts or ~/.ssh/config.
+targets: []
+#  - name: studio
+#    kind: native
+#    server: studio
+#  - name: lab
+#    kind: native
+#    server: 10.0.0.5:7297
+#  - name: home
+#    kind: local
+#  - name: remote-host
+#    kind: ssh
+#    ssh_host: remote-host
+#    mode: forward
+#    rex_path: /usr/local/bin/rex

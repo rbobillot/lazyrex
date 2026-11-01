@@ -1,0 +1,7 @@
+{
+  "bindings": [
+    {"keys": ["ctrl+a", "c"], "action": "window.new", "zz_future": 1},
+    {"keys": "ctrl+a d", "action": "detach"}
+  ],
+  "zz_future": 1
+}

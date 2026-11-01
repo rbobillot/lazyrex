@@ -1,0 +1,2 @@
+Error: rex server is not running
+connecting to Rex server unix:///run/user/1000/rex/server.sock: connecting to API control: failed to WebSocket dial: failed to send handshake request: Get "http://rex/api/control": dial unix /run/user/1000/rex/server.sock: connect: no such file or directory

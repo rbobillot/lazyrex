@@ -1,0 +1,32 @@
+{
+  "actions": [
+    {
+      "name": "split_right",
+      "description": "Split a block",
+      "args": {
+        "type": "object",
+        "required": ["direction"],
+        "properties": {
+          "direction": {"type": "string", "enum": ["right", "left"], "description": "side of the new block"},
+          "ratio": {"type": "integer", "description": "size of the new block, 1-99"},
+          "block_id": {"type": "string", "description": "block to split"}
+        }
+      },
+      "zz_future": 1
+    },
+    {"name": "mystery", "description": "Does something"},
+    {"name": "pairDevice"},
+    {"name": "install_update"},
+    {"name": "updateNow"},
+    {"name": "performUpdate"},
+    {"name": "checkForUpdates"},
+    {"name": "update_status"},
+    {"name": "getUpdateInfo"},
+    {"name": "ghostscript_view"},
+    {"name": "scripts/evil.lua"},
+    {"name": "a/b"},
+    {"name": "pane.split", "description": "a client prefix the server also lists"},
+    {"name": "session.select", "description": "also advertised by a client"}
+  ],
+  "zz_future": 1
+}

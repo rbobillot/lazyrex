@@ -1,0 +1,6 @@
+{
+  "home": {"label": "home", "endpoint": "unix:///run/user/1000/rex/server.sock", "this_machine": true, "reached": true, "zz_future": 1},
+  "hosts": [],
+  "warnings": [],
+  "zz_future": 1
+}

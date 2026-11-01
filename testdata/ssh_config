@@ -1,0 +1,20 @@
+# ~/.ssh/config as lazyrex reads it: literal Host aliases only.
+Include ~/.ssh/config.d/*
+
+Host remote-host
+    HostName 192.168.1.20
+    User user
+
+Host a b *.lan
+    User user
+
+Host=eq
+host lower
+HOST !neg
+Host bad%h -opt
+Host a
+Match host remote-host
+    ForwardAgent no
+
+Host *
+    ServerAliveInterval 30

@@ -1,0 +1,6 @@
+# Profiles of a run, one `profile<TAB>required roles<TAB>challengers<TAB>max launches<TAB>max critic rounds` line each.
+# scripts/harness.sh picks the profile from the class: D2 -> D2; D0, or D1 touching a single path -> lite unless
+# --full; anything else -> D1. The class only rises (gate recomputes it from the diff), so the profile only rises.
+lite	implementer critic	0	4	2
+D1	proposer challenger implementer critic	1	8	2
+D2	proposer challenger implementer critic security-critic	2	12	2

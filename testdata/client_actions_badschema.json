@@ -1,0 +1,9 @@
+{
+  "actions": [
+    {
+      "name": "bad",
+      "description": "a property name with an escape sequence",
+      "args": {"type": "object", "properties": {"a\u001b[2Jb": {"type": "string"}}}
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+# Model debt: a role that ran on a model outside its rows of models.tsv, or on another model than its row expects,
+# accepted by the human. `date<TAB>run<TAB>tool<TAB>role<TAB>slug<TAB>family<TAB>reason`, appended by
+# `scripts/harness.sh record --debt`; the reason ends with the model id the subagent reported.
+# Append only: a removed or edited row puts this file in the diff of every run based on a commit holding it (D2).
+# Clear a line by reviewing that run's work again with a listed model ("revisit run <id> with planned models").

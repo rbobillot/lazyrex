@@ -1,0 +1,44 @@
+{
+  "actions": [
+    {
+      "name": "session.select",
+      "description": "Show a session",
+      "args": {"type": "object", "required": ["session_id"], "properties": {"session_id": {"type": "string"}}},
+      "zz_future": 1
+    },
+    {
+      "name": "openFile",
+      "description": "Open a file",
+      "args": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": {"type": "string", "description": "file to open"},
+          "line": {"type": "integer"},
+          "mode": {"type": "string", "enum": ["view", "edit"]}
+        }
+      }
+    },
+    {"name": "closeWindow", "description": "Close the window"},
+    {"name": "installUpdate"},
+    {"name": "pairDevice"},
+    {"name": "checkForUpdates"},
+    {"name": "getUpdateInfo"},
+    {"name": "x.lua"},
+    {
+      "name": "hostile",
+      "description": "\u001b]0;pwn\u0007desc",
+      "args": {
+        "type": "object",
+        "required": ["kind"],
+        "properties": {"kind": {"type": "string", "description": "\u001b[31mred\u001b[0m", "enum": ["ok"]}}
+      }
+    },
+    {
+      "name": "pane.zoom",
+      "description": "Zoom a pane",
+      "args": {"type": "object", "required": ["block_id"], "properties": {"block_id": {"type": "string"}}}
+    }
+  ],
+  "zz_future": 1
+}

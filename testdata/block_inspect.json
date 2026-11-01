@@ -1,0 +1,7 @@
+{
+  "block_id": "block:01b1",
+  "label": "vim",
+  "creator_name": "terminal",
+  "methods": [{"name": "process"}, {"name": "modes"}],
+  "zz_future": 1
+}

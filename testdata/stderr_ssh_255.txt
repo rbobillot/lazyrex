@@ -1,0 +1,2 @@
+ssh: connect to host remote-host port 22: Connection refused
+debug1: no more authentication methods to try

@@ -1,0 +1,8 @@
+{
+  "client_id": "client:02app",
+  "info": {"kind": "app", "platform": "darwin_arm64", "name": "Rex.app", "version": "1.2.3"},
+  "principal": "user",
+  "connection_state": "connected",
+  "actions": [{"name": "session.select", "description": "Show a session"}],
+  "zz_future": 1
+}

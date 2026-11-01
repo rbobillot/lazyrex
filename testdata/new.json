@@ -1,0 +1,8 @@
+{
+  "session_id": "session:03cccc",
+  "label": "fresh",
+  "initial_windows": [
+    {"window_id": "window:03w1", "label": "main", "block_ids": ["block:03b1"], "zz_future": 1}
+  ],
+  "zz_future": 1
+}

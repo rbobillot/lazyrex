@@ -1,0 +1,9 @@
+session.view
+session.list
+server.stop
+hosts.list
+hosts.put
+server.pair_device
+target.complete
+session.resize_pane
+

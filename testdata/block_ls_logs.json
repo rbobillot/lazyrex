@@ -1,0 +1,5 @@
+{
+  "blocks": [
+    {"block_id": "block:02b1", "label": "tail", "creator_name": "terminal", "flavor": "shell", "host_id": "host:01hz", "placement": {"kind": "tiled"}, "window_id": "window:02w1", "owner": "user"}
+  ]
+}

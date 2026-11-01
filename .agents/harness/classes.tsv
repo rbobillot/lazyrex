@@ -1,0 +1,116 @@
+# Decision class of a path, one `class<TAB>glob` line each; the first matching line wins, a path matching none is D1,
+# and a change takes the highest class of its paths. Globs are bash patterns where `*` also crosses `/`.
+# Paths are matched relative to the root (`./` and `//` removed); .agents/harness/debt.tsv is left out of a diff
+# while rows are only appended to it.
+# D2: the harness itself, agent instructions and tool config at any depth (CLAUDE.local.md, opencode.json(c), tool
+# ignore files such as .cursorignore), CI config at any depth (for example .github, .gitlab-ci.yml, .gitlab,
+# .circleci, Jenkinsfile, azure-pipelines.yml, .travis.yml, bitbucket-pipelines.yml, .buildkite, .drone.yml,
+# .woodpecker, .gitea, .forgejo, appveyor.yml, cloudbuild.yaml, .semaphore: a CI system missing here is D1 until a
+# row is added), git hooks, git files that hide or redirect paths (ignore, attributes, submodules), editor config,
+# secrets and security-sensitive code. D0: docs only.
+D2	.agents/*
+D2	scripts/harness.sh
+D2	scripts/test/harness.sh
+D2	.claude/*
+D2	*/.claude/*
+D2	.cursor/*
+D2	*/.cursor/*
+D2	.opencode/*
+D2	*/.opencode/*
+D2	opencode.json
+D2	opencode.jsonc
+D2	*/opencode.json
+D2	*/opencode.jsonc
+D2	AGENTS.md
+D2	CLAUDE.md
+D2	*/AGENTS.md
+D2	*/CLAUDE.md
+D2	CLAUDE.local.md
+D2	*/CLAUDE.local.md
+D2	SKILL.md
+D2	*/SKILL.md
+D2	.cursorrules
+D2	*/.cursorrules
+D2	.cursorignore
+D2	*/.cursorignore
+D2	.mcp.json
+D2	*/.mcp.json
+D2	.githooks/*
+D2	.husky/*
+D2	.pre-commit-config.yaml
+D2	*/.pre-commit-config.yaml
+D2	lefthook.yml
+D2	*/lefthook.yml
+D2	lefthook.yaml
+D2	*/lefthook.yaml
+D2	.lefthook.yml
+D2	*/.lefthook.yml
+D2	.lefthook.yaml
+D2	*/.lefthook.yaml
+D2	.github/*
+D2	*/.github/*
+D2	.gitignore
+D2	*/.gitignore
+D2	.gitattributes
+D2	*/.gitattributes
+D2	.gitmodules
+D2	.vscode/*
+D2	*/.vscode/*
+D2	.idea/*
+D2	*/.idea/*
+D2	.gitlab-ci.yml
+D2	*/.gitlab-ci.yml
+D2	.gitlab/*
+D2	*/.gitlab/*
+D2	.circleci/*
+D2	*/.circleci/*
+D2	Jenkinsfile
+D2	*/Jenkinsfile
+D2	azure-pipelines.yml
+D2	*/azure-pipelines.yml
+D2	.travis.yml
+D2	*/.travis.yml
+D2	bitbucket-pipelines.yml
+D2	*/bitbucket-pipelines.yml
+D2	.buildkite/*
+D2	*/.buildkite/*
+D2	.drone.yml
+D2	*/.drone.yml
+D2	.woodpecker.yml
+D2	*/.woodpecker.yml
+D2	.woodpecker/*
+D2	*/.woodpecker/*
+D2	.gitea/*
+D2	*/.gitea/*
+D2	.forgejo/*
+D2	*/.forgejo/*
+D2	appveyor.yml
+D2	*/appveyor.yml
+D2	cloudbuild.yaml
+D2	*/cloudbuild.yaml
+D2	.semaphore/*
+D2	*/.semaphore/*
+D2	*.env
+D2	*.env.*
+D2	*.pem
+D2	*.key
+D2	*.p12
+D2	*.pfx
+D2	*id_rsa*
+D2	*id_ed25519*
+D2	*id_ecdsa*
+D2	.npmrc
+D2	*/.npmrc
+D2	.pypirc
+D2	*/.pypirc
+D2	*credentials*
+D2	auth/*
+D2	*/auth/*
+D2	security/*
+D2	*/security/*
+D2	crypto/*
+D2	*/crypto/*
+D2	migrations/*
+D2	*/migrations/*
+D0	docs/*
+D0	*.md

@@ -1,0 +1,9 @@
+{
+  "rex_version": "0.0.1000000000-gabc1234",
+  "platform": "linux_amd64",
+  "commit": "abc1234000000000000000000000000000000000",
+  "built_at": "2026-01-01T08:00:00Z",
+  "dirty": false,
+  "api_revision": 9,
+  "zz_future": {"nested": [1, 2]}
+}

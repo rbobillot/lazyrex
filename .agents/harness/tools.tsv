@@ -1,0 +1,7 @@
+# Tools that drive a run, one `tool<TAB>independence` line each. independence is the key that independent roles
+# (Challengers against the Proposer, critics against the Implementer and each other) must differ by:
+# family (vendor) where the tool runs several vendors natively, model where it runs a single vendor.
+# Every role runs as a native subagent of the tool: no tool calls another tool's CLI.
+claude	model
+cursor	family
+opencode	family

@@ -1,0 +1,7 @@
+{
+  "sessions": [
+    {"session_id": "session:01aaaa", "label": "work", "zz_future": 1},
+    {"session_id": "session:02bbbb", "label": "logs\u001b]0;evil\u0007"}
+  ],
+  "zz_future": {}
+}

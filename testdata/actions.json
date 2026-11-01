@@ -1,0 +1,12 @@
+{
+  "actions": [
+    {
+      "name": "session.select",
+      "description": "Select a session",
+      "args": {"type": "object", "properties": {"session_id": {"type": "string"}}},
+      "zz_future": 1
+    },
+    {"name": "split_right", "description": "Split the focused block right"}
+  ],
+  "zz_future": 1
+}

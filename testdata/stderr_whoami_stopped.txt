@@ -1,0 +1,3 @@
+Error: no Rex server is running at unix:///run/user/1000/rex/server.sock, and autostart is disabled
+	tried unix:///run/user/1000/rex/server.sock: dial unix /run/user/1000/rex/server.sock: connect: no such file or directory
+	start one with: rex server start

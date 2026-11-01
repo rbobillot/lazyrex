@@ -1,0 +1,13 @@
+{
+  "principal": "user",
+  "account": {"id": "acct:02"},
+  "endpoint": "unix:///run/user/1001/rex/server.sock",
+  "pid": 5151,
+  "instance_id": "inst:02ed",
+  "host_id": "host:02ed",
+  "started_at": "2026-01-01T11:00:00Z",
+  "rex_version": "0.0.1000000000-gabc1234",
+  "exit_empty": true,
+  "session_count": 2,
+  "tailscale": {"state": "off"}
+}

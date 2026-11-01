@@ -1,0 +1,1 @@
+Error: home this machine is unreachable: no Rex server is running at /run/user/1000/rex/server.sock, and autostart is disabled

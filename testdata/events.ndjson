@@ -1,0 +1,8 @@
+{"type":"session_created","payload":{"session_id":"session:03cccc"}}
+{"type":"client_joined","payload":{"client_id":"client:09cli"}}
+{"type":"session_event","payload":{"session_id":"session:01aaaa","event":{"type":"window_created","window_id":"window:01w3"}}}
+this line is not json
+{"type":"session_event","payload":{"session_id":"session:01aaaa","event":{"type":"block_event","payload":{"block_id":"block:01b1","creator_name":"terminal","name":"child_exited","payload":{"exit_code":3,"error":""}}}}}
+{"type":"session_event","payload":{"session_id":"session:01aaaa","event":{"type":"session_view_changed","revision":8,"zz_future":1}}}
+{"type":"mystery_future","zz_future":1}
+{"type":"session_event","payload":{"session_id":"session:01aaaa","event":{"type":"mystery_inner"}}}

@@ -1,0 +1,11 @@
+---
+description: Multi-agent harness: start a run, launch the subagents its plan prints, record each launch, pass the gate
+alwaysApply: true
+---
+
+For any change beyond a trivial one-liner, follow skill `multi-agent` (`.agents/skills/multi-agent/SKILL.md`) with `--tool cursor`.
+
+- The orchestrator is this chat on Claude Opus at high thinking. On `Auto`, a fast tier or an unknown model, launch nothing: ask the human to switch.
+- Launch only the `harness-*` subagents that `scripts/harness.sh plan <run>` prints for `--tool cursor` (Cursor also lists the `.claude/agents/` ones: ignore those). Never choose a model by taste.
+- Start the run with `--base <branch>` (required in git). Reviewers are `readonly`: paste the diff into their prompt.
+- Record each launch with `scripts/harness.sh record` right after it returns, never one that did not happen, and finish only on `scripts/harness.sh gate <run>` printing `pass`.

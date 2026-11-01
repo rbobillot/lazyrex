@@ -1,0 +1,60 @@
+# Models of the harness, one `tool<TAB>role<TAB>slug<TAB>family<TAB>expect` line per entry, in preference order
+# within a tool and role. Read by scripts/harness.sh (pick, plan, record, sync, check). Every entry is a native
+# subagent of its tool, generated into that tool's agents directory by `scripts/harness.sh sync`: no tool calls
+# another tool's CLI. A pick never takes the same independence key twice (tools.tsv: the family, or for Claude Code
+# the model). expect: a bash glob, matched without case, that the model id the subagent reports on its `Model:`
+# line must match for `record` to accept the launch (`?` stands for a `.` or `-` the tools spell differently).
+# After any change: scripts/harness.sh sync, then check, then restart the session before launching a changed agent.
+
+# Claude Code: Anthropic only, by Claude Code's model aliases; independence by model, so the Implementer (opus) is
+# never reviewed by opus. No fable rows: on this account a fable subagent runs Opus. haiku is the third model of the
+# judgment roles because Anthropic models are all Claude Code has.
+claude	proposer	opus	anthropic	claude-opus-*
+claude	challenger	sonnet	anthropic	claude-sonnet-*
+claude	challenger	haiku	anthropic	claude-haiku-*
+claude	implementer	opus	anthropic	claude-opus-*
+claude	critic	sonnet	anthropic	claude-sonnet-*
+claude	critic	haiku	anthropic	claude-haiku-*
+claude	security-critic	sonnet	anthropic	claude-sonnet-*
+claude	security-critic	haiku	anthropic	claude-haiku-*
+claude	explorer	haiku	anthropic	claude-haiku-*
+claude	explorer	sonnet	anthropic	claude-sonnet-*
+claude	mechanical	sonnet	anthropic	claude-sonnet-*
+
+# Cursor: slugs from `cursor-agent --list-models`; independence by family.
+cursor	proposer	claude-opus-5-5-high	anthropic	*claude-opus-5?5*
+cursor	challenger	gpt-5.6-sol-medium	openai	*gpt-5?6-sol*
+cursor	challenger	gemini-4-argon-medium	google	*gemini-4-argon*
+cursor	challenger	grok-4.7-high	xai	*grok-4?7*
+cursor	implementer	claude-opus-5-5-high	anthropic	*claude-opus-5?5*
+cursor	implementer	claude-opus-5-5-medium	anthropic	*claude-opus-5?5*
+cursor	critic	gpt-5.6-sol-medium	openai	*gpt-5?6-sol*
+cursor	critic	gemini-4-argon-medium	google	*gemini-4-argon*
+cursor	critic	grok-4.7-high	xai	*grok-4?7*
+cursor	critic	claude-opus-5-5-high	anthropic	*claude-opus-5?5*
+cursor	security-critic	gpt-5.6-sol-medium	openai	*gpt-5?6-sol*
+cursor	security-critic	gemini-4-argon-medium	google	*gemini-4-argon*
+cursor	security-critic	grok-4.7-high	xai	*grok-4?7*
+cursor	security-critic	claude-opus-5-5-high	anthropic	*claude-opus-5?5*
+cursor	explorer	composer-2.5-fast	cursor	*composer*
+cursor	explorer	claude-sonnet-5-5-medium	anthropic	*claude-sonnet-5?5*
+cursor	mechanical	composer-2.5-fast	cursor	*composer*
+cursor	mechanical	claude-sonnet-5-5-medium	anthropic	*claude-sonnet-5?5*
+
+# OpenCode: slugs from `opencode models` (GitHub Copilot provider); independence by family.
+opencode	proposer	github-copilot/claude-opus-5.5	anthropic	*claude-opus-5?5*
+opencode	challenger	github-copilot/gpt-5.6-sol	openai	*gpt-5?6-sol*
+opencode	challenger	github-copilot/gemini-4-argon	google	*gemini-4-argon*
+opencode	challenger	github-copilot/grok-4.7	xai	*grok-4?7*
+opencode	implementer	github-copilot/claude-opus-5.5	anthropic	*claude-opus-5?5*
+opencode	critic	github-copilot/gpt-5.6-sol	openai	*gpt-5?6-sol*
+opencode	critic	github-copilot/gemini-4-argon	google	*gemini-4-argon*
+opencode	critic	github-copilot/grok-4.7	xai	*grok-4?7*
+opencode	critic	github-copilot/claude-opus-5.5	anthropic	*claude-opus-5?5*
+opencode	security-critic	github-copilot/gpt-5.6-sol	openai	*gpt-5?6-sol*
+opencode	security-critic	github-copilot/gemini-4-argon	google	*gemini-4-argon*
+opencode	security-critic	github-copilot/grok-4.7	xai	*grok-4?7*
+opencode	security-critic	github-copilot/claude-opus-5.5	anthropic	*claude-opus-5?5*
+opencode	explorer	github-copilot/claude-haiku-5.5	anthropic	*claude-haiku-5?5*
+opencode	explorer	github-copilot/gemini-3.8-flash	google	*gemini-3?8-flash*
+opencode	mechanical	github-copilot/claude-sonnet-5.5	anthropic	*claude-sonnet-5?5*

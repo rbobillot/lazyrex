@@ -1,0 +1,20 @@
+{
+  "clients": [
+    {
+      "client_id": "client:01cli",
+      "info": {"kind": "cli", "platform": "linux_amd64", "name": "rex", "version": "0.0.1000000000-gabc1234", "zz_future": 1},
+      "principal": "user",
+      "connected_at": "2026-01-01T10:01:00Z",
+      "connection_state": "connected",
+      "zz_future": 1
+    },
+    {
+      "client_id": "client:02app",
+      "info": {"kind": "app", "platform": "darwin_arm64", "name": "Rex.app", "version": "1.2.3"},
+      "principal": {"name": "user"},
+      "connected_at": "2026-01-01T09:00:00Z",
+      "connection_state": "connected"
+    }
+  ],
+  "zz_future": 1
+}

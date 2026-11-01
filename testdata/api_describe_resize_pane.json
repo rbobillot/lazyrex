@@ -1,0 +1,15 @@
+{
+  "name": "session.resize_pane",
+  "input_schema": {
+    "type": "object",
+    "required": ["session_id", "block_id", "direction", "delta"],
+    "properties": {
+      "session_id": {"type": "string"},
+      "block_id": {"type": "string"},
+      "direction": {"type": "string", "enum": ["left", "right", "up", "down"]},
+      "delta": {"type": "integer"}
+    }
+  },
+  "output_schema": {},
+  "zz_future": 1
+}

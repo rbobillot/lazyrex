@@ -1,0 +1,10 @@
+{
+  "blocks": [
+    {"block_id": "block:01b1", "label": "vim", "creator_name": "terminal", "flavor": "shell", "host_id": "host:01hz", "placement": {"kind": "tiled", "layer_id": "layer:01l1"}, "window_id": "window:01w1", "owner": "user", "zz_future": 1},
+    {"block_id": "block:01b2", "label": "shell", "creator_name": "terminal", "flavor": "shell", "host_id": "host:01hz", "placement": {"kind": "tiled", "layer_id": "layer:01l1"}, "window_id": "window:01w1", "owner": "user"},
+    {"block_id": "block:01b3", "label": "float", "creator_name": "terminal", "flavor": "shell", "host_id": "host:01hz", "placement": {"kind": "floating", "layer_id": "layer:01l2"}, "window_id": "window:01w1", "owner": "user"},
+    {"block_id": "block:01b4", "label": "make", "creator_name": "terminal", "flavor": "shell", "host_id": "host:01hz", "placement": {"kind": "tiled", "layer_id": "layer:01l3"}, "window_id": "window:01w2", "owner": "user"},
+    {"block_id": "block:01b5", "label": "bg-job", "creator_name": "terminal", "flavor": "shell", "host_id": "host:01hz", "placement": "detached", "window_id": "", "owner": "user"}
+  ],
+  "zz_future": 1
+}
