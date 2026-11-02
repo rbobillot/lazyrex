@@ -1109,16 +1109,13 @@ func TestInstallInterrupted(t *testing.T) {
 	}
 }
 
-// TestInstallTruncated pipes the script cut at every line start, and at every byte of its last line: a
-// truncated download must run nothing.
+// TestInstallTruncated pipes the script cut at every line start, and at every byte of its last line short of
+// its final newline: a truncated download must run nothing.
 func TestInstallTruncated(t *testing.T) {
 	script := installScript(t)
 	text := string(script)
 	body := strings.TrimSuffix(text, "\n")
 	lastStart := strings.LastIndex(body, "\n") + 1
-	if last := body[lastStart:]; last != `main "$@"` {
-		t.Fatalf("last line %q", last)
-	}
 	var cuts []int
 	for i := 0; i < lastStart; i++ {
 		if i == 0 || text[i-1] == '\n' {
@@ -1133,14 +1130,6 @@ func TestInstallTruncated(t *testing.T) {
 			t.Parallel()
 			f := newInstall(t)
 			for _, n := range cuts {
-				// A cut right after the name calls main with no arguments, as curl | sh runs the whole script.
-				if n > lastStart && strings.TrimSpace(text[lastStart:n]) == "main" {
-					g := newInstall(t)
-					r := g.pipe(t, sh, script[:n], nil)
-					wantCode(t, r, 0)
-					wantInstalled(t, g.defaultDir(), "v0.1.0", "linux/amd64")
-					continue
-				}
 				r := f.pipe(t, sh, script[:n], nil)
 				for _, log := range []string{"curl.log", "uname.log", "sysctl.log"} {
 					if exists(filepath.Join(f.s.root, log)) {
@@ -1170,8 +1159,8 @@ func TestInstallScriptShape(t *testing.T) {
 	if lines[0] != "#!/bin/sh" {
 		t.Errorf("line 1 %q, want #!/bin/sh", lines[0])
 	}
-	if l := lines[len(lines)-1]; l != `main "$@"` {
-		t.Errorf("last line %q, want main \"$@\"", l)
+	if l := lines[len(lines)-1]; l != `{ main "$@"; }` {
+		t.Errorf("last line %q, want { main \"$@\"; }", l)
 	}
 	opener := regexp.MustCompile(`^[a-z_]+\(\) \{$`)
 	oneLine := regexp.MustCompile(`^[a-z_]+\(\) \{ .*; \}$`)
