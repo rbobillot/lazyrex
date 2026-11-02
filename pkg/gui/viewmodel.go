@@ -346,6 +346,45 @@ type sshTransport interface {
 	Host() string
 }
 
+type guiLink interface{ GUIEndpoint() rex.GUIEndpoint }
+
+// gui says what to enter in the Rex app to reach the target named name, then
+// a blank line. pkg/gui has no clipboard, so the command stands alone on its
+// line to be selected.
+func (l *lines) gui(name string, ep rex.GUIEndpoint) {
+	n, uri := render.Label(name), render.Label(ep.URI)
+	hint := true
+	switch ep.State {
+	case rex.GUIForwarded:
+		l.add("gui endpoint  %s", uri)
+	case rex.GUIDown:
+		l.add("gui endpoint  %s (tunnel down)", uri)
+	case rex.GUIElsewhere:
+		l.add("gui endpoint  %s (served by another lazyrex for this same target; this one uses a private socket. "+
+			"Activate %s again after that one quits to take it over.)", uri, n)
+	case rex.GUIUnavailable:
+		l.add("gui endpoint  none: %s", render.Label(ep.Why))
+		hint = false
+	case rex.GUIExecMode:
+		l.add("gui endpoint  none: mode: exec forwards no socket. Remove mode: exec to give the Rex app an endpoint.")
+		hint = false
+	case rex.GUIUnforwardable:
+		l.add("gui endpoint  none: the server's endpoint cannot be forwarded (%s). "+
+			"The Rex app needs Tailscale or your own ssh -L forward to reach it.", render.Label(ep.Why))
+		hint = false
+	default:
+		return
+	}
+	if hint {
+		l.add("")
+		l.add("Rex app: add a host with this endpoint, or run once (lazyrex never runs it):")
+		l.add("%s", render.Label(rex.HostsAddHint(name, ep.URI)))
+		l.add("It works while lazyrex runs with %s active. Rex has no transport auth: only your user can open this socket.", n)
+		l.add("Rex syncs hosts to your other devices, where this path reaches nothing unless lazyrex forwards it there.")
+	}
+	l.add("")
+}
+
 func sshHint(host string) string {
 	h := render.Label(host)
 	return fmt.Sprintf(`ssh could not reach %s (network, authentication or host key; BatchMode=yes never prompts). Run "ssh %s" in a terminal, then c checks again.`, h, h)
@@ -426,6 +465,9 @@ func RenderStatus(s *State) string {
 		l.add("WARNING: api mismatch, some calls may fail or show partial data.")
 	}
 	l.add("")
+	if g, ok := s.Transport.(guiLink); ok {
+		l.gui(s.TargetName, g.GUIEndpoint())
+	}
 	if s.StreamUp {
 		l.add("event stream  up")
 	} else {
