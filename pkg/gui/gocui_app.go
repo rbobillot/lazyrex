@@ -446,9 +446,11 @@ type RunOptions struct {
 	Initial string
 	Flag    *rex.Target
 	File    config.File
-	// SSH and SSHConfigHosts are as in Options.
+	// SSH, SSHConfigHosts, Env and HomeDir are as in Options.
 	SSH            *rex.SSHEnv
 	SSHConfigHosts []string
+	Env            func(string) string
+	HomeDir        func() (string, error)
 }
 
 // Run starts the TUI on the initial target and blocks until quit.
@@ -458,7 +460,8 @@ func Run(ctx context.Context, o RunOptions) error {
 	clock := rex.RealClock()
 	ui := &gocuiUI{}
 	ctrl := NewController(NewState(), o.Client, ui, Options{Clock: clock, Config: o.Config, Bindings: o.Bindings, Warnings: o.Warnings,
-		Targets: o.Targets, Initial: o.Initial, Flag: o.Flag, File: o.File, SSH: o.SSH, SSHConfigHosts: o.SSHConfigHosts})
+		Targets: o.Targets, Initial: o.Initial, Flag: o.Flag, File: o.File, SSH: o.SSH, SSHConfigHosts: o.SSHConfigHosts,
+		Env: o.Env, HomeDir: o.HomeDir})
 	a, err := newApp(ctrl, appOptions{})
 	if err != nil {
 		return err

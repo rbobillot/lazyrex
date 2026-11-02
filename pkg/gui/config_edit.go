@@ -296,6 +296,7 @@ func (c *Controller) writeConfig(done, sel, edits string, edit func(config.File)
 				c.Popups.Toast(render.Label(done) + " in " + render.Label(nf.Path))
 			}
 			c.syncMain()
+			c.refreshRexHosts()
 		})
 	})
 }

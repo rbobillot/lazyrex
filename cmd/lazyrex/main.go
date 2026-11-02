@@ -123,7 +123,8 @@ func run(args []string) int {
 		sshHosts = config.ReadSSHConfigHosts(filepath.Join(home, ".ssh", "config"))
 	}
 	o := gui.RunOptions{Client: client, Config: cfg, Bindings: bindings, Warnings: warnings,
-		Targets: targets, Initial: all[idx].Name, Flag: flagTarget, File: file, SSH: ssh, SSHConfigHosts: sshHosts}
+		Targets: targets, Initial: all[idx].Name, Flag: flagTarget, File: file, SSH: ssh, SSHConfigHosts: sshHosts,
+		Env: os.Getenv, HomeDir: os.UserHomeDir}
 	if err := gui.Run(ctx, o); err != nil {
 		fmt.Fprintln(os.Stderr, "lazyrex:", err)
 		return 1

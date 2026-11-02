@@ -174,6 +174,7 @@ type State struct {
 	StreamUp   bool
 	Targets    []TargetRow
 	Hosts      HostsState
+	RexHosts   RexHostsView
 
 	Sessions []rex.SessionEntry
 	Data     map[rex.SessionID]*SessionData
