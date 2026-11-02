@@ -23,7 +23,7 @@ Then open a pull request from that branch of your fork against `main` of `rbobil
 
 - One change per pull request: a fix, a feature or a docs change, not several.
 - Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:`, `test:`...). For a behavior change, write the tests first. See [Contributing](docs/development.md#contributing) in the development guide.
-- CI runs on every pull request, but for an outside contributor it waits until the maintainer approves the run.
+- CI runs on every pull request, but for an outside contributor it waits until someone with write access approves the run.
 
 ## Before opening a pull request
 

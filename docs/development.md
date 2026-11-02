@@ -88,7 +88,7 @@ To reproduce a binary, run the build command of the release notes on the tagged 
 Repository settings the human has set:
 
 - the tag ruleset "release tags" on `refs/tags/v*` blocks updates and deletions, with no bypass, not even for admins. It does not restrict creation: any account with push access can still create a new `v*` tag;
-- the fork pull request approval policy is "all outside contributors": CI waits for the maintainer's approval before it runs on a pull request from any outside contributor.
+- the fork pull request approval policy is "all outside contributors": CI waits for approval from someone with write access before it runs on a pull request from any outside contributor.
 
 Not enabled: immutable releases, and CI as a required check.
 
