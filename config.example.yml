@@ -52,8 +52,10 @@ keybindings: {}
 # kind: ssh reaches Rex on another machine through ssh (BatchMode=yes: it
 # never prompts). ssh_host is a Host from ~/.ssh/config or user@host, with no
 # leading '-' and no whitespace. mode: forward (default) forwards the remote
-# Rex socket into $XDG_RUNTIME_DIR/lazyrex and uses rex -S unix://...; it
-# falls back to exec only when the remote endpoint cannot be forwarded.
+# Rex socket into lazyrex's private runtime directory
+# ($XDG_RUNTIME_DIR/lazyrex, or /tmp/lazyrex-UID/run when unset) and uses
+# rex -S unix://...; it falls back to exec only when the remote endpoint
+# cannot be forwarded.
 # mode: exec runs the remote rex through ssh for every call and needs a POSIX
 # login shell (sh, bash, zsh...). rex_path, an absolute path, skips probing
 # for the remote rex. a, e and d in the Targets panel edit this list, keeping
