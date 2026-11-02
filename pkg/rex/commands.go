@@ -48,6 +48,9 @@ type Cmd struct {
 	PayloadKV bool
 	Key       string
 	Err       error
+	// LocalOnly runs the command on this machine's server only, without
+	// REX_SERVER; see IsLocalOnly.
+	LocalOnly bool
 }
 
 // Touching returns c with ids added to the blocks it affects.
@@ -141,6 +144,20 @@ func (Commands) HostsCheck(labels ...string) Cmd {
 		}
 	}
 	return Cmd{Args: append(append([]string{"hosts", "check"}, labels...), "--json")}
+}
+
+// ConfigCheck has this machine's rex check the config file at path without
+// loading it.
+func (Commands) ConfigCheck(path string) Cmd {
+	if !filepath.IsAbs(path) || hasControl(path) {
+		return invalid("config file must be an absolute path: %q", path)
+	}
+	return Cmd{Args: []string{"config", "check", "--json", path}, LocalOnly: true}
+}
+
+// ConfigReload has this machine's server read its config again.
+func (Commands) ConfigReload() Cmd {
+	return Cmd{Args: []string{"config", "reload", "--json"}, Kind: KindAPI, Name: "server.config_reload", LocalOnly: true}
 }
 func (Commands) Events() Cmd {
 	return Cmd{Args: []string{"events", "--all", "--json"}, Kind: KindStream}

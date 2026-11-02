@@ -35,6 +35,12 @@ type Runner interface {
 	Stream(ctx context.Context, argv []string) (LineStream, error)
 }
 
+// EnvRunner is a Runner that can also run argv without some variables of
+// the child environment.
+type EnvRunner interface {
+	RunEnv(ctx context.Context, argv, drop []string) (Result, error)
+}
+
 // ExecRunner runs processes with os/exec.
 type ExecRunner struct {
 	// MaxLine is the longest stream line kept (default 4 MiB); longer lines
@@ -50,14 +56,14 @@ const (
 // contextVars are the variables rex reads as the client, session or block a
 // command means when it does not name one. lazyrex always names them, and
 // inheriting its own pane's values could aim a call at that pane or client.
-// REX_SERVER stays: it selects the endpoint.
+// REX_SERVER stays, except for RunEnv's drop: it selects the endpoint.
 var contextVars = []string{"REX_CLIENT", "REX_SESSION", "REX_BLOCK"}
 
-func childEnv(env []string) []string {
+func childEnv(env, drop []string) []string {
 	out := make([]string, 0, len(env))
 	for _, kv := range env {
 		name, _, _ := strings.Cut(kv, "=")
-		if !slices.Contains(contextVars, name) {
+		if !slices.Contains(contextVars, name) && !slices.Contains(drop, name) {
 			out = append(out, kv)
 		}
 	}
@@ -68,10 +74,10 @@ func childEnv(env []string) []string {
 // ControlPersist master keeps them open) can hold Wait.
 var waitDelay = 2 * time.Second
 
-func command(ctx context.Context, argv []string) *exec.Cmd {
+func command(ctx context.Context, argv, drop []string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Stdin = nil
-	cmd.Env = childEnv(os.Environ())
+	cmd.Env = childEnv(os.Environ(), drop)
 	cmd.WaitDelay = waitDelay
 	return cmd
 }
@@ -113,12 +119,17 @@ func (c *cappedBuffer) Write(p []byte) (int, error) {
 }
 
 // Run implements Runner.
-func (ExecRunner) Run(ctx context.Context, argv []string) (Result, error) {
+func (r ExecRunner) Run(ctx context.Context, argv []string) (Result, error) {
+	return r.RunEnv(ctx, argv, nil)
+}
+
+// RunEnv implements EnvRunner.
+func (ExecRunner) RunEnv(ctx context.Context, argv, drop []string) (Result, error) {
 	if len(argv) == 0 {
 		return Result{Code: -1}, errors.New("empty argv")
 	}
 	start := time.Now()
-	cmd := command(ctx, argv)
+	cmd := command(ctx, argv, drop)
 	var stdout bytes.Buffer
 	stderr := &cappedBuffer{max: maxStderr}
 	cmd.Stdout, cmd.Stderr = &stdout, stderr
@@ -152,7 +163,7 @@ func (r ExecRunner) Stream(ctx context.Context, argv []string) (LineStream, erro
 		maxLine = defaultMaxLine
 	}
 	start := time.Now()
-	cmd := command(ctx, argv)
+	cmd := command(ctx, argv, nil)
 	// stdout goes through os/exec's copying goroutine, which WaitDelay
 	// bounds, so a child holding the pipe cannot keep the stream open after
 	// the process exited. Wait runs while lines are read, as that goroutine
