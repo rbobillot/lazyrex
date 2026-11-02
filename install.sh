@@ -1,7 +1,8 @@
 #!/bin/sh
 # Installs lazyrex from a GitHub release:
 #   curl -fsSL https://raw.githubusercontent.com/rbobillot/lazyrex/main/install.sh | sh
-# Only function definitions sit above the last line, which calls main: a truncated download runs nothing.
+# Only function definitions sit above the last line, which calls main inside braces: every truncated download
+# either ends before that line or leaves the braces open, a syntax error, so it runs nothing.
 set -eu
 
 repo=https://github.com/rbobillot/lazyrex
@@ -145,4 +146,4 @@ main() {
   command -v rex >/dev/null 2>&1 || say "rex is not in PATH: lazyrex needs it (API revision 9)"
 }
 
-main "$@"
+{ main "$@"; }
