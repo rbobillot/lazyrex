@@ -30,7 +30,7 @@ func privateDir(t *testing.T) string {
 	if err := os.Chmod(d, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if len(d) > 33 {
+	if len(d) > 31 {
 		t.Skipf("temporary directory %s is too long for socket paths", d)
 	}
 	return d
@@ -94,7 +94,7 @@ func TestPrepareRuntimeDir(t *testing.T) {
 		wantErr(t, err, `XDG_RUNTIME_DIR "`+link+`" is or goes through a symlink`)
 	})
 	t.Run("parent missing", func(t *testing.T) {
-		missing := filepath.Join(privateDir(t), "missing")
+		missing := filepath.Join(privateDir(t), "m")
 		_, err := rex.PrepareRuntimeDir(missing)
 		wantErr(t, err, `XDG_RUNTIME_DIR "`+missing+`" is or goes through a symlink`)
 	})
