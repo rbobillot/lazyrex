@@ -127,6 +127,44 @@ func TestDeletedLockKeepsLiveSocket(t *testing.T) {
 	}
 }
 
+// TestRebindAfterDeadDial: a listener that replaces a dead socket after the
+// refused dial, before the unlink check, keeps its path through Prepare and
+// Cleanup.
+func TestRebindAfterDeadDial(t *testing.T) {
+	dir, sock := claimDir(t)
+	var s OSSockets
+	for name, run := range map[string]func() error{
+		"prepare": func() error { return s.Prepare(dir, sock) },
+		"cleanup": func() error { s.Cleanup(sock); return ErrLiveSocket },
+	} {
+		t.Run(name, func(t *testing.T) {
+			l, err := net.Listen("unix", sock)
+			if err != nil {
+				t.Fatal(err)
+			}
+			l.(*net.UnixListener).SetUnlinkOnClose(false)
+			l.Close()
+			time.Sleep(10 * time.Millisecond)
+			var rebound net.Listener
+			deadDialed = func() {
+				os.Remove(sock)
+				if rebound, err = net.Listen("unix", sock); err != nil {
+					t.Error(err)
+				}
+			}
+			t.Cleanup(func() { deadDialed = func() {} })
+			if err := run(); !errors.Is(err, ErrLiveSocket) {
+				t.Fatalf("%s = %v, want ErrLiveSocket", name, err)
+			}
+			deadDialed = func() {}
+			if !accepts(sock) {
+				t.Fatal("the rebound socket lost its path")
+			}
+			rebound.Close()
+		})
+	}
+}
+
 // TestClaimAcrossProcesses (C19): a claim held by another process is
 // refused, and freed when that process exits without releasing it.
 func TestClaimAcrossProcesses(t *testing.T) {

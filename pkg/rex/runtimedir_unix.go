@@ -189,19 +189,33 @@ func (OSSockets) Prepare(dir, path string) error {
 	case st.Mode()&fs.ModeSocket == 0 || !ownedByMe(st):
 		return fmt.Errorf("refusing to replace %s: not a socket of the current user", path)
 	}
-	return removeDead(path)
+	return removeDead(path, st)
 }
 
-// removeDead removes a socket of mine only once a dial proves nothing serves
-// it. A dial failing any other way counts as live: a wedged listener keeps
-// its path.
-func removeDead(path string) error {
+// deadDialed runs between the refused dial and the recheck; tests rebind
+// the path there.
+var deadDialed = func() {}
+
+// removeDead removes the socket st describes only once a dial proves nothing
+// serves it and the path still names it. A dial failing any other way counts
+// as live: a wedged listener keeps its path. No syscall unlinks a socket only
+// if it is dead, so a listener binding the path between the recheck and the
+// unlink still loses it.
+func removeDead(path string, st fs.FileInfo) error {
 	c, err := net.DialTimeout("unix", path, time.Second)
 	if err == nil {
 		c.Close()
 		return ErrLiveSocket
 	}
 	if !errors.Is(err, syscall.ECONNREFUSED) && !errors.Is(err, syscall.ENOENT) {
+		return ErrLiveSocket
+	}
+	deadDialed()
+	cur, err := os.Lstat(path)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return nil
+	case err != nil || !os.SameFile(st, cur) || !st.ModTime().Equal(cur.ModTime()):
 		return ErrLiveSocket
 	}
 	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -273,8 +287,10 @@ func (OSSockets) WaitReady(ctx context.Context, path string, exited <-chan struc
 
 // Cleanup implements TunnelSockets.
 func (OSSockets) Cleanup(path string) {
-	if checkRuntimeDir(filepath.Dir(path)) != nil || !myLiveSocket(path) {
+	if checkRuntimeDir(filepath.Dir(path)) != nil {
 		return
 	}
-	_ = removeDead(path)
+	if st, err := os.Lstat(path); err == nil && st.Mode()&fs.ModeSocket != 0 && ownedByMe(st) {
+		_ = removeDead(path, st)
+	}
 }
