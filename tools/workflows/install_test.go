@@ -72,11 +72,80 @@ while [ ! -e "$FIX_DIR/go" ]; do sleep 0.1; done
 exec "$REAL_CHMOD" "$@"
 `
 
-type program struct{ name, path string }
+type program struct {
+	name, path string
+	// ownUname is the platform the shell's own uname reports when it runs its applets before PATH, as Ubuntu's
+	// busybox does with uname, tar, chmod, sha256sum and most other tools; empty when it runs PATH.
+	ownUname string
+}
 
-// shells lists the shells a piped install.sh may meet: sh, dash and bash when distinct, then busybox and zsh
-// run under the name sh, when installed. sh is required.
-func shells(t *testing.T) []program {
+// fakeUse is what a test needs of the fixture's PATH, which a shell running its own applets bypasses.
+type fakeUse int
+
+const (
+	// anyShell: no fake but curl, which no shell has as an applet, and logs of the other fakes only checked absent.
+	anyShell fakeUse = iota
+	// linuxAMD64: also a uname reporting Linux x86_64 like the fake one by default, which an applet shell's own
+	// uname does on such a host.
+	linuxAMD64
+	// allFakes: the fake uname, sysctl or chmod, or a tool hidden or picked in the tools directory.
+	allFakes
+)
+
+func (p program) runs(use fakeUse) bool {
+	switch {
+	case p.ownUname == "", use == anyShell:
+		return true
+	case use == linuxAMD64:
+		return p.ownUname == "Linux x86_64" || p.ownUname == "Linux amd64"
+	}
+	return false
+}
+
+// ownUname runs uname -s and uname -m in sh with only a fake uname in PATH: empty when sh ran the fake, else
+// what sh's own uname printed.
+func ownUname(t *testing.T, sh string) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "uname"), []byte("#!/bin/sh\necho fake\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(sh, "-c", "uname -s; uname -m")
+	cmd.Env = []string{"PATH=" + dir}
+	b, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("%s: uname -s; uname -m: %v", sh, err)
+	}
+	out := string(b)
+	if out == "fake\nfake\n" {
+		return ""
+	}
+	if f := strings.Fields(out); len(f) != 2 || out != f[0]+"\n"+f[1]+"\n" {
+		t.Fatalf("%s: uname -s; uname -m printed %q, want the fake's output or a kernel and a machine", sh, out)
+	}
+	return strings.Replace(strings.TrimSuffix(out, "\n"), "\n", " ", 1)
+}
+
+// shells lists the shells a piped install.sh may meet that can run a test of the given use: sh, dash and bash
+// when distinct, then busybox and zsh run under the name sh, when installed. sh is required, and so is a shell
+// running the fakes.
+func shells(t *testing.T, use fakeUse) []program {
+	t.Helper()
+	var all, out []program
+	for _, sh := range allShells(t) {
+		sh.ownUname = ownUname(t, sh.path)
+		all = append(all, sh)
+		if sh.runs(use) {
+			out = append(out, sh)
+		}
+	}
+	if !slices.ContainsFunc(all, func(sh program) bool { return sh.runs(allFakes) }) {
+		t.Fatalf("every shell runs its own uname, not the fixture's: %v", all)
+	}
+	return out
+}
+
+func allShells(t *testing.T) []program {
 	t.Helper()
 	var out []program
 	seen := map[string]bool{}
@@ -98,7 +167,7 @@ func shells(t *testing.T) []program {
 		}
 		if !seen[key] {
 			seen[key] = true
-			out = append(out, program{name, p})
+			out = append(out, program{name: name, path: p})
 		}
 	}
 	dir := t.TempDir()
@@ -116,7 +185,7 @@ func shells(t *testing.T) []program {
 			t.Fatal(err)
 		}
 		if exec.Command(link, "-c", ":").Run() == nil {
-			out = append(out, program{name + "-as-sh", link})
+			out = append(out, program{name: name + "-as-sh", path: link})
 		}
 	}
 	return out
@@ -145,7 +214,7 @@ func tars(t *testing.T) []program {
 		}
 		if !kinds[kind] {
 			kinds[kind] = true
-			out = append(out, program{kind, p})
+			out = append(out, program{name: kind, path: p})
 		}
 	}
 	if len(out) == 0 {
@@ -484,7 +553,7 @@ func TestInstallPlatforms(t *testing.T) {
 	if !maps.Equal(covered, want) {
 		t.Errorf("cases cover %v, want the release targets %v", slices.Sorted(maps.Keys(covered)), slices.Sorted(maps.Keys(want)))
 	}
-	for _, sh := range shells(t) {
+	for _, sh := range shells(t, allFakes) {
 		t.Run(sh.name, func(t *testing.T) {
 			t.Parallel()
 			for _, c := range cases {
@@ -523,7 +592,7 @@ func TestInstallRefusesPlatform(t *testing.T) {
 		{"Linux", "i686", "no lazyrex binary for linux/i686"},
 		{"Darwin", "riscv64", "no lazyrex binary for darwin/riscv64"},
 	}
-	for _, sh := range shells(t) {
+	for _, sh := range shells(t, allFakes) {
 		t.Run(sh.name, func(t *testing.T) {
 			t.Parallel()
 			for _, c := range cases {
@@ -550,7 +619,7 @@ func TestInstallVersion(t *testing.T) {
 		{"release candidate", "v0.2.0-rc.1", "v0.2.0-rc.1"},
 		{"empty", "", "v0.1.0"},
 	}
-	for _, sh := range shells(t) {
+	for _, sh := range shells(t, linuxAMD64) {
 		t.Run(sh.name, func(t *testing.T) {
 			t.Parallel()
 			for _, c := range cases {
@@ -583,7 +652,7 @@ func TestInstallRefusesVersion(t *testing.T) {
 		"v0.1", "v01.0.0", "v0.1.0-beta.1", "v0.1.0-rc.0", "v0.1.0-rc.01", "v0.1.0+m", "v0.1.0 ", "v1.2.3;id",
 		"vv0.1.0", "latest", "../v0.1.0", "v0.1.0/x", "v0.1.0\nx", "v0.1.0-rc.1-rc.2",
 	}
-	for _, sh := range shells(t) {
+	for _, sh := range shells(t, linuxAMD64) {
 		t.Run(sh.name, func(t *testing.T) {
 			t.Parallel()
 			for _, v := range bad {
@@ -654,7 +723,7 @@ func TestInstallLatest(t *testing.T) {
 			return nil
 		}, "", 2},
 	}
-	for _, sh := range shells(t) {
+	for _, sh := range shells(t, linuxAMD64) {
 		t.Run(sh.name, func(t *testing.T) {
 			t.Parallel()
 			for _, c := range cases {
@@ -777,7 +846,7 @@ func TestInstallChecksum(t *testing.T) {
 			return nil
 		}, "", 2},
 	}
-	for _, sh := range shells(t) {
+	for _, sh := range shells(t, allFakes) {
 		for _, tr := range tars(t) {
 			t.Run(sh.name+"/"+tr.name, func(t *testing.T) {
 				t.Parallel()
@@ -834,7 +903,7 @@ func TestInstallHashers(t *testing.T) {
 		{"neither", nil, "", "neither sha256sum nor shasum is installed"},
 		{"no curl", []string{"sha256sum", "shasum"}, "", "curl is not installed"},
 	}
-	for _, sh := range shells(t) {
+	for _, sh := range shells(t, allFakes) {
 		t.Run(sh.name, func(t *testing.T) {
 			t.Parallel()
 			for _, c := range cases {
@@ -874,7 +943,7 @@ func TestInstallHashers(t *testing.T) {
 func TestInstallDir(t *testing.T) {
 	script := installScript(t)
 	const hint = "choose a directory you own with LAZYREX_INSTALL_DIR (this script never uses sudo)"
-	for _, sh := range shells(t) {
+	for _, sh := range shells(t, linuxAMD64) {
 		t.Run(sh.name, func(t *testing.T) {
 			t.Parallel()
 			t.Run("default", func(t *testing.T) {
@@ -989,7 +1058,7 @@ func TestInstallDir(t *testing.T) {
 
 func TestInstallHints(t *testing.T) {
 	script := installScript(t)
-	for _, sh := range shells(t) {
+	for _, sh := range shells(t, linuxAMD64) {
 		t.Run(sh.name, func(t *testing.T) {
 			t.Parallel()
 			t.Run("not in PATH", func(t *testing.T) {
@@ -1036,7 +1105,7 @@ func TestInstallHints(t *testing.T) {
 
 func TestInstallArguments(t *testing.T) {
 	script := installScript(t)
-	for _, sh := range shells(t) {
+	for _, sh := range shells(t, anyShell) {
 		t.Run(sh.name, func(t *testing.T) {
 			t.Parallel()
 			for _, arg := range []string{"--help", "-h"} {
@@ -1068,10 +1137,18 @@ func TestInstallArguments(t *testing.T) {
 // it must exit 1 and leave neither its temporary directory nor a staged file.
 func TestInstallInterrupted(t *testing.T) {
 	script := installScript(t)
-	for _, sh := range shells(t) {
+	stages := []struct {
+		name string
+		use  fakeUse
+	}{{"download", linuxAMD64}, {"staging", allFakes}}
+	for _, sh := range shells(t, linuxAMD64) {
 		t.Run(sh.name, func(t *testing.T) {
 			t.Parallel()
-			for _, stage := range []string{"download", "staging"} {
+			for _, s := range stages {
+				if !sh.runs(s.use) {
+					continue
+				}
+				stage := s.name
 				t.Run(stage, func(t *testing.T) {
 					t.Parallel()
 					f := newInstall(t)
@@ -1125,7 +1202,7 @@ func TestInstallTruncated(t *testing.T) {
 	for i := lastStart + 1; i < len(body); i++ {
 		cuts = append(cuts, i)
 	}
-	for _, sh := range shells(t) {
+	for _, sh := range shells(t, anyShell) {
 		t.Run(sh.name, func(t *testing.T) {
 			t.Parallel()
 			f := newInstall(t)
