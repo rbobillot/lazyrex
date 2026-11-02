@@ -10,7 +10,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/debug"
-	"sync"
 	"syscall"
 	"time"
 
@@ -112,7 +111,7 @@ func run(args []string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
 	ssh := &rex.SSHEnv{
-		Dir:     sync.OnceValues(func() (string, error) { return rex.PrepareRuntimeDir(os.Getenv("XDG_RUNTIME_DIR")) }),
+		Dir:     func() (string, error) { return rex.PrepareRuntimeDir(os.Getenv("XDG_RUNTIME_DIR")) },
 		Sockets: rex.OSSockets{},
 		PID:     os.Getpid(),
 		Probes:  &rex.SSHProbes{},
