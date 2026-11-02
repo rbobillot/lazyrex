@@ -130,7 +130,7 @@ jobs:
           now=$(main_sha)
           [[ $now == "$SOURCE_SHA" ]] || stale "$now"
 
-          work=$(mktemp -d)
+          work=$(mktemp -d "${TMPDIR:-/tmp}/wiki.XXXXXXXXXX")
           trap 'rm -rf -- "$work"' EXIT
           wiki=$work/wiki
           # No checkout: the index starts empty, so every wiki page not in the artifact shows as deleted.
