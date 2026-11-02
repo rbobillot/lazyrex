@@ -21,6 +21,15 @@ const maxSocketPath = 100
 // longestSocketName is the longest name SSHEnv gives a tunnel socket.
 const longestSocketName = "/fwd-4294967295-18446744073709551615.sock"
 
+// maxBindPath is the longest path ssh can bind a socket at here: sun_path
+// less its NUL (103 on macOS and the BSDs, 107 on Linux).
+const maxBindPath = len(syscall.RawSockaddrUnix{}.Path) - 1
+
+// longestControlName is the longest name ssh binds for the exec ControlPath
+// ssh-%C: a ControlMaster binds ssh-%C.<16 random characters> first, then
+// renames it into place. %C is 40 hex digits.
+const longestControlName = "/ssh-0123456789abcdef0123456789abcdef01234567.0123456789abcdef"
+
 // PrepareRuntimeDir returns $XDG_RUNTIME_DIR/lazyrex, created with mode 0700.
 // Both directories must be real directories (no symlink anywhere) owned by
 // the current user with no group or other permissions, because ssh control
@@ -35,7 +44,7 @@ func PrepareRuntimeDir(xdg string) (string, error) {
 		return "", fmt.Errorf("XDG_RUNTIME_DIR %q contains a character ssh options cannot hold", xdg)
 	}
 	dir := filepath.Join(xdg, "lazyrex")
-	if len(dir)+len(longestSocketName) > maxSocketPath {
+	if len(dir)+len(longestSocketName) > maxSocketPath || len(dir)+len(longestControlName) > maxBindPath {
 		return "", fmt.Errorf("XDG_RUNTIME_DIR %q is too long for socket paths", xdg)
 	}
 	if real, err := filepath.EvalSymlinks(xdg); err != nil || real != xdg {
