@@ -123,7 +123,7 @@ jobs:
             name=${page##*/}
             [[ -f $page && ! -L $page && $name =~ ^(Home|_Sidebar|[a-z0-9][a-z0-9.-]*(_[a-z0-9][a-z0-9.-]*)*)\.md$ ]] ||
               die "unexpected artifact entry $(printf %q "$name")"
-            first=$(sed -n 1p -- "$page")
+            first=$(sed -n -e 1p -- "$page")
             [[ $first == '> Generated from '* ]] || die "$name has no generated banner"
           done
           [[ -f $PAGES/Home.md && -f $PAGES/_Sidebar.md ]] || die "no rendered wiki in the artifact"
