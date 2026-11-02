@@ -32,6 +32,34 @@ func TestRexHostsReloadMalformed(t *testing.T) {
 	}
 }
 
+// TestRexHostsNoTargetStopped (H49): with no target to declare and nothing
+// to remove, w says so even when the local server is stopped; a target with
+// no label still gives its reason.
+func TestRexHostsNoTargetStopped(t *testing.T) {
+	const native = "targets:\n  - name: srv\n    kind: native\n    server: srv\n"
+	const unlabeled = "targets:\n  - name: _\n    kind: ssh\n    ssh_host: edge\n"
+	for _, tc := range []struct{ cfg, toast, err string }{
+		{native, "no forward-mode SSH target to declare", ""},
+		{unlabeled, "", `"_" gives no Rex host label (it needs letters or digits); rename the target.`},
+	} {
+		r := newRexHarness(t, rexSetup{cfg: tc.cfg})
+		r.fr.On("hosts", "list", "--json").Return("", "Error: the server is not running\n", 4)
+		r.ctrl.refreshHosts()
+		if !r.st.Hosts.HomeStopped {
+			t.Fatal("home server not stopped")
+		}
+		r.w()
+		if tc.err != "" {
+			r.expectError(tc.err)
+		} else {
+			r.expectToast(tc.toast)
+		}
+		if r.countContaining("config", "check") != 0 {
+			t.Fatalf("calls:\n%s", r.dumpCalls())
+		}
+	}
+}
+
 // TestRexHostsWriteNotSynced: a write whose directory sync failed is no
 // success: no toast or log line saying it was written, and no reload offer.
 func TestRexHostsWriteNotSynced(t *testing.T) {

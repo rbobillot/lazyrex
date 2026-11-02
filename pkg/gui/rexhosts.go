@@ -296,6 +296,10 @@ func (c *Controller) afterLook() {
 		c.Popups.Error(fmt.Sprintf("%s is not a file lazyrex wrote (%s): lazyrex leaves it alone", path, render.Label(v.Foreign)))
 	case !v.UpToDate:
 		c.checkRexHosts(l)
+	case len(l.entries) == 0 && !v.NeedsReload && len(l.skipped) > 0:
+		c.Popups.Error(l.skipped[0].Why)
+	case len(l.entries) == 0 && !v.NeedsReload:
+		c.Popups.Toast("no forward-mode SSH target to declare")
 	case c.st.Hosts.HomeStopped:
 		c.Popups.Toast(c.stoppedText())
 	case v.NeedsReload:
@@ -307,14 +311,7 @@ func (c *Controller) afterLook() {
 				return
 			}
 		}
-		switch {
-		case len(l.entries) == 0 && len(l.skipped) > 0:
-			c.Popups.Error(l.skipped[0].Why)
-		case len(l.entries) == 0:
-			c.Popups.Toast("no forward-mode SSH target to declare")
-		default:
-			c.Popups.Toast(path + " is up to date and loaded")
-		}
+		c.Popups.Toast(path + " is up to date and loaded")
 	}
 }
 
