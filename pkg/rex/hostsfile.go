@@ -223,10 +223,34 @@ func ParseConfigCheck(b []byte) (ConfigCheckOutput, error) {
 	return o, err
 }
 
+// ParseConfigReload reads a successful reload: generation and diagnostics
+// are both required, diagnostics may be null.
 func ParseConfigReload(b []byte) (ConfigReloadOutput, error) {
 	var o ConfigReloadOutput
+	var keys map[string]json.RawMessage
+	if err := parseObject(b, &keys); err != nil {
+		return o, err
+	}
+	if err := json.Unmarshal(b, &o); err != nil {
+		return o, err
+	}
+	switch g := bytes.TrimSpace(keys["generation"]); {
+	case len(g) == 0 || string(g) == "null":
+		return o, errors.New("no generation in the output")
+	case keys["diagnostics"] == nil:
+		return o, errors.New("no diagnostics in the output")
+	}
+	return o, nil
+}
+
+// ParseConfigDiagnostics reads the diagnostics of any config command's
+// output, a failed one included.
+func ParseConfigDiagnostics(b []byte) ([]ConfigDiagnostic, error) {
+	var o struct {
+		Diagnostics []ConfigDiagnostic `json:"diagnostics"`
+	}
 	err := parseObject(b, &o)
-	return o, err
+	return o.Diagnostics, err
 }
 
 // FirstComplaint is the first error diagnostic, else the first one.

@@ -453,23 +453,28 @@ func (c *Controller) reloadDone(out rex.Outcome, err error) {
 		return
 	}
 	o, perr := rex.ParseConfigReload(out.Stdout)
-	if perr == nil {
-		for _, d := range o.Diagnostics {
+	ds, derr := rex.ParseConfigDiagnostics(out.Stdout)
+	if derr == nil {
+		for _, d := range ds {
 			c.LogLine("config reload: " + d.Severity + " " + d.Text())
 		}
 	}
 	switch out.Kind {
 	case rex.ExitOK:
-		c.reloaded, c.reloadAfter = true, c.hostsStarted
 		msg := "the local Rex server read its config again"
-		if d, ok := rex.FirstComplaint(o.Diagnostics); perr != nil {
+		d, complained := rex.FirstComplaint(o.Diagnostics)
+		switch {
+		case perr != nil:
 			msg += " (output unreadable)"
-		} else if ok {
+		case complained:
 			noun := "complaints"
 			if len(o.Diagnostics) == 1 {
 				noun = "complaint"
 			}
 			msg += fmt.Sprintf(", with %d %s: %s", len(o.Diagnostics), noun, d.Text())
+		}
+		if perr == nil {
+			c.reloaded, c.reloadAfter = true, c.hostsStarted
 		}
 		c.Popups.Toast(msg)
 		c.syncRexHosts()
@@ -481,7 +486,7 @@ func (c *Controller) reloadDone(out rex.Outcome, err error) {
 	case rex.ExitInterrupted:
 	default:
 		msg := out.Toast
-		if d, ok := rex.FirstComplaint(o.Diagnostics); perr == nil && ok {
+		if d, ok := rex.FirstComplaint(ds); derr == nil && ok {
 			msg = d.Text()
 		}
 		c.Popups.Error("rex config reload: " + msg)
