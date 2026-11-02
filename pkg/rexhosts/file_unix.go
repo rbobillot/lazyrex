@@ -15,12 +15,15 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/rbobillot/lazyrex/pkg/rex"
 )
 
 // Test hooks.
 var (
 	beforeRename = func() {}
+	beforeOpen   = func() {}
 	lockBusy     = func() {}
 	lockWait     = 2 * time.Second
 	lockPoll     = 50 * time.Millisecond
@@ -61,9 +64,20 @@ func openDir(dir string) (*os.Root, *os.File, error) {
 
 func foreign(why string) (Snapshot, error) { return Snapshot{State: Foreign, Why: why}, nil }
 
-// inspect reads lazyrex's file in root without following a symlink at its
-// name or blocking on a FIFO.
-func inspect(root *os.Root) (Snapshot, error) {
+// openNoFollow opens name in the directory d for reading. os.Root follows a
+// final symlink that stays inside the root, even with O_NOFOLLOW, so it
+// opens on the directory's fd directly.
+func openNoFollow(d *os.File, name string) (*os.File, error) {
+	fd, err := unix.Openat(int(d.Fd()), name, unix.O_RDONLY|unix.O_NONBLOCK|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, &fs.PathError{Op: "openat", Path: name, Err: err}
+	}
+	return os.NewFile(uintptr(fd), name), nil
+}
+
+// inspect reads lazyrex's file in root, whose directory d is, without
+// following a symlink at its name or blocking on a FIFO.
+func inspect(root *os.Root, d *os.File) (Snapshot, error) {
 	fi, err := root.Lstat(rex.HostsFileName)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
@@ -75,8 +89,12 @@ func inspect(root *os.Root) (Snapshot, error) {
 	case !fi.Mode().IsRegular():
 		return foreign("not a regular file")
 	}
-	f, err := root.OpenFile(rex.HostsFileName, os.O_RDONLY|syscall.O_NONBLOCK, 0)
-	if err != nil {
+	beforeOpen()
+	f, err := openNoFollow(d, rex.HostsFileName)
+	switch {
+	case errors.Is(err, unix.ELOOP), errors.Is(err, unix.EMLINK):
+		return Snapshot{}, ErrChanged
+	case err != nil:
 		return Snapshot{}, err
 	}
 	defer f.Close()
@@ -123,7 +141,7 @@ func Read(p Paths) (Snapshot, error) {
 	defer d.Close()
 	// Without the lock, a writer's rename can land between Lstat and open.
 	for range 10 {
-		if snap, err := inspect(root); !errors.Is(err, ErrChanged) {
+		if snap, err := inspect(root, d); !errors.Is(err, ErrChanged) {
 			return snap, err
 		}
 	}
@@ -151,8 +169,8 @@ func lock(d *os.File) error {
 }
 
 // compare checks that the file is still what seen says.
-func compare(root *os.Root, seen Snapshot) error {
-	cur, err := inspect(root)
+func compare(root *os.Root, d *os.File, seen Snapshot) error {
+	cur, err := inspect(root, d)
 	switch {
 	case err != nil:
 		return err
@@ -198,7 +216,7 @@ func Write(p Paths, data []byte, seen Snapshot) error {
 	if err := lock(d); err != nil {
 		return err
 	}
-	if err := compare(root, seen); err != nil {
+	if err := compare(root, d, seen); err != nil {
 		return err
 	}
 	f, tmp, err := createTemp(root)
@@ -222,7 +240,7 @@ func Write(p Paths, data []byte, seen Snapshot) error {
 		return err
 	}
 	beforeRename()
-	if err := compare(root, seen); err != nil {
+	if err := compare(root, d, seen); err != nil {
 		return err
 	}
 	if err := root.Rename(tmp, rex.HostsFileName); err != nil {
