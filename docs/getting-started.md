@@ -4,7 +4,7 @@
 
 ## Install
 
-lazyrex needs `rex` (API revision 9) in `PATH` to run, and Go 1.26 only to build it from source. SSH targets also need OpenSSH's `ssh` in `PATH` and `$XDG_RUNTIME_DIR` set to a private directory: a clean absolute path, yours, mode 0700, no symlinks, short enough for socket paths. Without it, or on Windows, SSH targets are listed but say why they are not available ([SSH targets](ssh.md)).
+lazyrex needs `rex` (API revision 9) in `PATH` to run, and Go 1.26 only to build it from source. SSH targets also need OpenSSH's `ssh` in `PATH` and lazyrex's private runtime directory (`$XDG_RUNTIME_DIR/lazyrex`, or `/tmp/lazyrex-UID/run` when `$XDG_RUNTIME_DIR` is unset, as on macOS). A set `$XDG_RUNTIME_DIR` must be a private directory: a clean absolute path, yours, mode 0700, no symlinks, short enough for socket paths. When the directory fails its checks, or on Windows, SSH targets are listed but say why they are not available ([SSH targets](ssh.md)).
 
 On Linux or macOS, amd64 or arm64, one line installs the [latest release](https://github.com/rbobillot/lazyrex/releases/latest):
 

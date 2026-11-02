@@ -33,7 +33,7 @@ flowchart LR
 
 ## Install
 
-Requires `rex` (API revision 9) in `PATH`. SSH targets also need OpenSSH's `ssh` and a private `$XDG_RUNTIME_DIR` ([SSH targets](docs/ssh.md)).
+Requires `rex` (API revision 9) in `PATH`. SSH targets also need OpenSSH's `ssh` and lazyrex's private runtime directory (`$XDG_RUNTIME_DIR/lazyrex`, or `/tmp/lazyrex-UID/run` when unset) ([SSH targets](docs/ssh.md)).
 
 On Linux or macOS, amd64 or arm64:
 
