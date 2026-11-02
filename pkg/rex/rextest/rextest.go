@@ -384,11 +384,14 @@ func (c *FakeClock) Advance(d time.Duration) {
 	}
 }
 
-// FakeSockets is a rex.TunnelSockets that touches no file.
+// FakeSockets is a rex.TunnelSockets that touches no file. Like flock, a
+// path claimed and not released yet cannot be claimed again.
 type FakeSockets struct {
 	mu       sync.Mutex
 	prepared []string
 	cleaned  []string
+	events   []string
+	claimed  map[string]bool
 	waits    int
 	gates    map[string]<-chan struct{}
 	holds    *Holds
@@ -398,6 +401,47 @@ type FakeSockets struct {
 	Ready func(n int) bool
 	// PrepareErr, if set, is returned by Prepare.
 	PrepareErr error
+	// PrepareFunc, if set, is called by Prepare instead of returning
+	// PrepareErr.
+	PrepareFunc func(path string) error
+	// Held reports whether another process holds the claim of path.
+	Held func(path string) bool
+	// ClaimErr, if set, is returned by Claim.
+	ClaimErr error
+}
+
+// Claim implements rex.TunnelSockets.
+func (s *FakeSockets) Claim(dir, path string) (func(), error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.events = append(s.events, "claim:"+path)
+	switch {
+	case s.ClaimErr != nil:
+		return nil, s.ClaimErr
+	case s.claimed[path] || (s.Held != nil && s.Held(path)):
+		return nil, rex.ErrSocketHeld
+	}
+	if s.claimed == nil {
+		s.claimed = map[string]bool{}
+	}
+	s.claimed[path] = true
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			delete(s.claimed, path)
+			s.events = append(s.events, "release:"+path)
+		})
+	}, nil
+}
+
+// Events returns the claim, release, prepare and cleanup calls in order,
+// each as "claim:PATH", "release:PATH", "prepare:PATH" or "cleanup:PATH".
+func (s *FakeSockets) Events() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.events)
 }
 
 // GateCleanup holds Cleanup of path until gate closes, the end of t, or
@@ -419,6 +463,10 @@ func (s *FakeSockets) Prepare(dir, path string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.prepared = append(s.prepared, path)
+	s.events = append(s.events, "prepare:"+path)
+	if s.PrepareFunc != nil {
+		return s.PrepareFunc(path)
+	}
 	return s.PrepareErr
 }
 
@@ -449,6 +497,7 @@ func (s *FakeSockets) Cleanup(path string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.cleaned = append(s.cleaned, path)
+	s.events = append(s.events, "cleanup:"+path)
 }
 
 // Prepared returns the paths passed to Prepare, in order.

@@ -19,6 +19,9 @@ const (
 	sshRunDir     = "/run/user/1000/lazyrex"
 	sshConfig     = "targets:\n  - name: remote-host\n    kind: ssh\n    ssh_host: remote-host\n"
 	sshExecConfig = sshConfig + "    mode: exec\n"
+	// sshStableSock is the stable socket of target remote-host, ssh_host
+	// remote-host.
+	sshStableSock = sshRunDir + "/gui-remote-host_996d7034ffff31a3.sock"
 )
 
 var sshExecPrefix = []string{"ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "-o", "ControlMaster=auto",
@@ -168,7 +171,7 @@ func TestSSHArgvInvariants(t *testing.T) {
 			seen["exec whoami"] = true
 		case c[0] == "ssh" && slices.Contains(c, "'start'"):
 			seen["start"] = true
-		case c[0] == "rex" && slices.Contains(c, "unix://"+sshRunDir+"/fwd-42-1.sock"):
+		case c[0] == "rex" && slices.Contains(c, "unix://"+sshStableSock):
 			seen["forward rex"] = true
 		}
 		if c[0] == "ssh" {
@@ -290,7 +293,7 @@ func TestSSHTunnelRestartGUI(t *testing.T) {
 	fr.OnStream("-N").Until(drop).Exit(255, "client_loop: send disconnect: Broken pipe\n")
 	s := newSSHHarness(t, fr, nil, withConfig(sshConfig), withInitial("remote-host"))
 	s.waitState(rex.StateOnline)
-	if s.count("-S unix://"+sshRunDir+"/fwd-42-1.sock ls --json") == 0 {
+	if s.count("-S unix://"+sshStableSock+" ls --json") == 0 {
 		t.Fatalf("ls not read through the tunnel:\n%s", s.dumpCalls())
 	}
 	fr.On(quoted("whoami", "--json")...).Return("", rextest.FixtureString("stderr_ssh_255.txt"), 255)
@@ -306,11 +309,16 @@ func TestSSHTunnelRestartGUI(t *testing.T) {
 	}
 }
 
-// TestSSHSwitchKillsTunnel (7g).
+// TestSSHSwitchKillsTunnel (7g, C12): switching away kills the tunnel; back
+// on the target, the new tunnel takes the same stable socket once the old
+// one is cleaned up.
 func TestSSHSwitchKillsTunnel(t *testing.T) {
 	fr := sshRunner("/bin/bash")
 	first := fr.OnStream("-N").Hold()
-	s := newSSHHarness(t, fr, nil, withConfig(sshConfig))
+	gate := make(chan struct{})
+	sockets := &rextest.FakeSockets{}
+	sockets.GateCleanup(t, sshStableSock, gate)
+	s := newSSHHarness(t, fr, sockets, withConfig(sshConfig))
 	s.activateTarget("remote-host")
 	s.waitState(rex.StateOnline)
 	s.activateTarget("local")
@@ -319,12 +327,22 @@ func TestSSHSwitchKillsTunnel(t *testing.T) {
 	case <-time.After(rextest.Timeout):
 		t.Fatal("tunnel still running after the switch")
 	}
-	s.pumpUntil("cleanup", func() bool { return slices.Contains(s.sockets.Cleaned(), sshRunDir+"/fwd-42-1.sock") })
 	s.activateTarget("remote-host")
+	time.Sleep(20 * time.Millisecond)
+	s.ui.pump()
+	if n := len(s.tunnels()); n != 1 {
+		t.Fatalf("%d tunnels while the old cleanup is held:\n%s", n, s.dumpCalls())
+	}
+	close(gate)
 	s.waitState(rex.StateOnline)
 	tunnels := s.tunnels()
-	if len(tunnels) != 2 || !slices.ContainsFunc(tunnels[1], func(w string) bool { return strings.HasPrefix(w, sshRunDir+"/fwd-42-2.sock:") }) {
+	if len(tunnels) != 2 {
 		t.Fatalf("tunnels = %q", tunnels)
+	}
+	for _, tn := range tunnels {
+		if !slices.ContainsFunc(tn, func(w string) bool { return strings.HasPrefix(w, sshStableSock+":") }) {
+			t.Fatalf("tunnel %q does not use the stable socket", tn)
+		}
 	}
 }
 
@@ -348,14 +366,14 @@ func TestPreparedConfirmEqualsExecuted(t *testing.T) {
 	if len(closes) != 1 || strings.Join(closes[0], " ") != body {
 		t.Fatalf("confirmed %q, ran %q", body, closes)
 	}
-	if !strings.Contains(body, "-S unix://"+sshRunDir+"/fwd-42-1.sock") {
+	if !strings.Contains(body, "-S unix://"+sshStableSock) {
 		t.Fatalf("body %q", body)
 	}
 }
 
-// TestSSHMacOSFallbackGUI: a macOS server with Rex Beta and its
-// percent-encoded endpoint comes online in exec mode through the Rex Beta
-// CLI, with no tunnel.
+// TestSSHMacOSFallbackGUI (C24): a macOS server with Rex Beta and its
+// percent-encoded endpoint comes online through the tunnel, and the Status
+// tab gives the endpoint and the command for the Rex app.
 func TestSSHMacOSFallbackGUI(t *testing.T) {
 	const betaRex = "/Applications/Rex Beta.app/Contents/Helpers/Rex Server.rex/Contents/MacOS/rex"
 	fr := sshRunner("/bin/zsh")
@@ -363,10 +381,16 @@ func TestSSHMacOSFallbackGUI(t *testing.T) {
 	fr.On(quoted("whoami", "--json")...).Return(rextest.FixtureString("whoami_remote_macos.json"), "", 0)
 	s := newSSHHarness(t, fr, nil, withConfig(sshConfig), withInitial("remote-host"))
 	s.waitState(rex.StateOnline)
-	if n := len(s.tunnels()); n != 0 {
-		t.Fatalf("%d tunnels:\n%s", n, s.dumpCalls())
+	tunnels := s.tunnels()
+	if len(tunnels) != 1 || !slices.Contains(tunnels[0], sshStableSock+":/Users/user/Library/Application Support/rex/server.sock") {
+		t.Fatalf("tunnels = %q", tunnels)
 	}
-	if st := RenderStatus(s.st); !strings.Contains(st, "exec mode (endpoint cannot be forwarded)") {
+	if s.count("-S unix://"+sshStableSock+" ls --json") == 0 {
+		t.Fatalf("ls not read through the tunnel:\n%s", s.dumpCalls())
+	}
+	st := RenderStatus(s.st)
+	if !containsAll(st, "forward mode, tunnel up", "gui endpoint  unix://"+sshStableSock+"\n",
+		"\nrex hosts add remote-host unix://"+sshStableSock+"\n") {
 		t.Fatalf("status tab:\n%s", st)
 	}
 	execCalls := fr.CallsContaining("'--autostart=false'")

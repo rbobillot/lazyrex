@@ -62,6 +62,25 @@ func shareLease(cmd *exec.Cmd) error {
 	return nil
 }
 
+// leaseLock keeps the lock holdLeaseLock took open for the life of the
+// process.
+var leaseLock *os.File
+
+// holdLeaseLock takes the lease lock shared itself, as a process that
+// inherits no lock from its parent must.
+func holdLeaseLock() error {
+	f, err := os.Open(os.Getenv("HELPER_LOCK"))
+	if err != nil {
+		return err
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_SH|syscall.LOCK_NB); err != nil {
+		f.Close()
+		return err
+	}
+	leaseLock = f
+	return nil
+}
+
 // held reports whether a grandchild still holds the lease.
 func (l *lease) held() (bool, error) {
 	f, err := os.Open(l.lock)

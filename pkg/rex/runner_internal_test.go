@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -38,7 +39,35 @@ func TestHelperProcess(t *testing.T) {
 		}
 		fmt.Println("ready", gc.Process.Pid)
 		os.Exit(0)
-	case "hold":
+	case "claim-hold":
+		// Holds the claim until stdin closes, then exits without releasing.
+		if _, err := (OSSockets{}).Claim(os.Getenv("HELPER_DIR"), os.Getenv("HELPER_SOCK")); errors.Is(err, ErrSocketHeld) {
+			fmt.Println("held")
+		} else if err != nil {
+			fmt.Println("error", err)
+		} else {
+			fmt.Println("claimed")
+		}
+		_, _ = io.Copy(io.Discard, os.Stdin)
+		os.Exit(0)
+	case "claim-spawn":
+		// Claims, starts a lease-hold grandchild the way tunnels start, and
+		// exits without releasing: only an inherited lock would outlive it.
+		if _, err := (OSSockets{}).Claim(os.Getenv("HELPER_DIR"), os.Getenv("HELPER_SOCK")); err != nil {
+			fmt.Println("error", err)
+			os.Exit(0)
+		}
+		os.Setenv("HELPER_MODE", "lease-hold")
+		if _, err := (ExecRunner{}).Stream(context.Background(), []string{os.Args[0], "-test.run=^TestHelperProcess$"}); err != nil {
+			fmt.Println("error", err)
+			os.Exit(0)
+		}
+		fmt.Println("ready")
+		os.Exit(0)
+	case "hold", "lease-hold":
+		if os.Getenv("HELPER_MODE") == "lease-hold" && holdLeaseLock() != nil {
+			os.Exit(12)
+		}
 		// Until the test's cleanup removes the lease, for at most 60s, past
 		// lingerWait. A lease already gone ends it at once.
 		lease := os.Getenv("HELPER_LEASE")
