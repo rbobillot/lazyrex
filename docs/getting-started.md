@@ -6,7 +6,31 @@
 
 lazyrex needs `rex` (API revision 9) in `PATH` to run, and Go 1.26 only to build it from source. SSH targets also need OpenSSH's `ssh` in `PATH` and `$XDG_RUNTIME_DIR` set to a private directory: a clean absolute path, yours, mode 0700, no symlinks, short enough for socket paths. Without it, or on Windows, SSH targets are listed but say why they are not available ([SSH targets](ssh.md)).
 
-Binaries for Linux and macOS, on amd64 and arm64, are on the [latest release](https://github.com/rbobillot/lazyrex/releases/latest):
+On Linux or macOS, amd64 or arm64, one line installs the [latest release](https://github.com/rbobillot/lazyrex/releases/latest):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/rbobillot/lazyrex/main/install.sh | sh
+```
+
+[install.sh](../install.sh) picks the archive of your OS and architecture (an Apple silicon Mac gets arm64, even from a shell under Rosetta), downloads it with the release's `SHA256SUMS` and checks it with `sha256sum` or `shasum -a 256`. It refuses when neither exists or the sums differ, then puts `lazyrex` in `~/.local/bin`. It never uses `sudo`, and says so when that directory is not in your `PATH`. Piping it to `bash` instead of `sh` works too. Two variables change its choices:
+
+| Variable | Default | Set it to |
+|---|---|---|
+| `LAZYREX_VERSION` | the latest release | a release tag, such as `v0.1.0` |
+| `LAZYREX_INSTALL_DIR` | `~/.local/bin` | an absolute path you can write to |
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/rbobillot/lazyrex/main/install.sh | LAZYREX_VERSION=v0.1.0 LAZYREX_INSTALL_DIR="$HOME/bin" sh
+```
+
+To read the script before it runs, download it, read it, then run it:
+
+```sh
+curl -fsSLO https://raw.githubusercontent.com/rbobillot/lazyrex/main/install.sh
+sh install.sh
+```
+
+### By hand
 
 ```sh
 v=0.1.0 os=linux arch=amd64   # os: linux or darwin; arch: amd64 or arm64
@@ -18,7 +42,9 @@ mkdir -p ~/.local/bin
 install "lazyrex_${v}_${os}_${arch}/lazyrex" ~/.local/bin/
 ```
 
-The macOS binaries are unsigned: one downloaded with a browser needs `xattr -d com.apple.quarantine` before it runs. Or, with Go 1.26:
+The macOS binaries are unsigned: one downloaded with a browser needs `xattr -d com.apple.quarantine` before it runs (`curl` and the script set no quarantine).
+
+### With Go
 
 ```sh
 go install github.com/rbobillot/lazyrex/cmd/lazyrex@latest

@@ -33,21 +33,15 @@ flowchart LR
 
 ## Install
 
-Requires `rex` (API revision 9) in `PATH`, plus Go 1.26 only to build from source. SSH targets also need OpenSSH's `ssh` and a private `$XDG_RUNTIME_DIR` ([SSH targets](docs/ssh.md)).
+Requires `rex` (API revision 9) in `PATH`. SSH targets also need OpenSSH's `ssh` and a private `$XDG_RUNTIME_DIR` ([SSH targets](docs/ssh.md)).
 
-Binaries for Linux and macOS, on amd64 and arm64, are on the [latest release](https://github.com/rbobillot/lazyrex/releases/latest):
+On Linux or macOS, amd64 or arm64:
 
 ```sh
-v=0.1.0 os=linux arch=amd64   # os: linux or darwin; arch: amd64 or arm64
-base=https://github.com/rbobillot/lazyrex/releases/download/v$v
-curl -LO "$base/lazyrex_${v}_${os}_${arch}.tar.gz" -LO "$base/SHA256SUMS"
-grep " lazyrex_${v}_${os}_${arch}.tar.gz\$" SHA256SUMS | sha256sum --check   # macOS: shasum -a 256 --check
-tar -xzf "lazyrex_${v}_${os}_${arch}.tar.gz"
-mkdir -p ~/.local/bin
-install "lazyrex_${v}_${os}_${arch}/lazyrex" ~/.local/bin/
+curl -fsSL https://raw.githubusercontent.com/rbobillot/lazyrex/main/install.sh | sh
 ```
 
-The macOS binaries are unsigned: one downloaded with a browser needs `xattr -d com.apple.quarantine` before it runs. Or, with Go 1.26:
+[The script](install.sh) installs the [latest release](https://github.com/rbobillot/lazyrex/releases/latest) for your OS and architecture in `~/.local/bin`, after checking it against the release's `SHA256SUMS`, and never uses `sudo`. It runs under `bash` too. Set `LAZYREX_VERSION` or `LAZYREX_INSTALL_DIR` to pick another release or directory. To read the script first, or install by hand: [Getting started](docs/getting-started.md#install). Or, with Go 1.26:
 
 ```sh
 go install github.com/rbobillot/lazyrex/cmd/lazyrex@latest

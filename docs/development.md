@@ -81,6 +81,8 @@ The publish job first creates a draft holding the four archives and `SHA256SUMS`
 
 The archives are `lazyrex_<version>_<os>_<arch>.tar.gz`, where the version is the tag without its `v`, for `linux` and `darwin` on `amd64` and `arm64`. Each holds a directory of the same name with `lazyrex`, `LICENSE` and `README.md`. `SHA256SUMS` lists the four archives. There is no Windows binary: SSH targets are not available there ([SSH targets](ssh.md)).
 
+[install.sh](../install.sh), served from `main`, installs a release's archive for the user's OS and architecture after checking it against `SHA256SUMS`. Its tests in `tools/workflows` run on Ubuntu and macOS against a fake `curl`.
+
 A release of the tag that already exists, draft or published, makes the job fail and replaces nothing, so running it again after a success fails too. Never move, delete or push a tag again: fix forward with the next version. The tag ruleset refuses a move or a deletion anyway.
 
 To reproduce a binary, run the build command of the release notes on the tagged commit, with the Go version they name, and compare the binaries, not the gzip files.
