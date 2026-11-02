@@ -4,7 +4,21 @@
 
 ## Install
 
-lazyrex needs Go 1.26 to build and `rex` (API revision 9) in `PATH` to run. SSH targets also need OpenSSH's `ssh` in `PATH` and `$XDG_RUNTIME_DIR` set to a private directory: a clean absolute path, yours, mode 0700, no symlinks, short enough for socket paths. Without it, or on Windows, SSH targets are listed but say why they are not available ([SSH targets](ssh.md)).
+lazyrex needs `rex` (API revision 9) in `PATH` to run, and Go 1.26 only to build it from source. SSH targets also need OpenSSH's `ssh` in `PATH` and `$XDG_RUNTIME_DIR` set to a private directory: a clean absolute path, yours, mode 0700, no symlinks, short enough for socket paths. Without it, or on Windows, SSH targets are listed but say why they are not available ([SSH targets](ssh.md)).
+
+Binaries for Linux and macOS, on amd64 and arm64, are on the [latest release](https://github.com/rbobillot/lazyrex/releases/latest):
+
+```sh
+v=0.1.0 os=linux arch=amd64   # os: linux or darwin; arch: amd64 or arm64
+base=https://github.com/rbobillot/lazyrex/releases/download/v$v
+curl -LO "$base/lazyrex_${v}_${os}_${arch}.tar.gz" -LO "$base/SHA256SUMS"
+grep " lazyrex_${v}_${os}_${arch}.tar.gz\$" SHA256SUMS | sha256sum --check   # macOS: shasum -a 256 --check
+tar -xzf "lazyrex_${v}_${os}_${arch}.tar.gz"
+mkdir -p ~/.local/bin
+install "lazyrex_${v}_${os}_${arch}/lazyrex" ~/.local/bin/
+```
+
+The macOS binaries are unsigned: one downloaded with a browser needs `xattr -d com.apple.quarantine` before it runs. Or, with Go 1.26:
 
 ```sh
 go install github.com/rbobillot/lazyrex/cmd/lazyrex@latest

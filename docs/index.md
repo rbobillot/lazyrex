@@ -42,7 +42,7 @@ flowchart LR
 | Change timeouts, refresh intervals, capture size or targets | [Configuration](configuration.md) |
 | Understand a status, an error or an exit code | [Troubleshooting](troubleshooting.md) |
 | See how the code is laid out | [Architecture](architecture.md) |
-| Build, test and contribute | [Development](development.md) |
+| Build, test, release and contribute | [Development](development.md) |
 
 ## Where things live
 

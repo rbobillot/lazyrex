@@ -33,7 +33,21 @@ flowchart LR
 
 ## Install
 
-Requires Go 1.26 and `rex` (API revision 9) in `PATH`. SSH targets also need OpenSSH's `ssh` and a private `$XDG_RUNTIME_DIR` ([SSH targets](docs/ssh.md)).
+Requires `rex` (API revision 9) in `PATH`, plus Go 1.26 only to build from source. SSH targets also need OpenSSH's `ssh` and a private `$XDG_RUNTIME_DIR` ([SSH targets](docs/ssh.md)).
+
+Binaries for Linux and macOS, on amd64 and arm64, are on the [latest release](https://github.com/rbobillot/lazyrex/releases/latest):
+
+```sh
+v=0.1.0 os=linux arch=amd64   # os: linux or darwin; arch: amd64 or arm64
+base=https://github.com/rbobillot/lazyrex/releases/download/v$v
+curl -LO "$base/lazyrex_${v}_${os}_${arch}.tar.gz" -LO "$base/SHA256SUMS"
+grep " lazyrex_${v}_${os}_${arch}.tar.gz\$" SHA256SUMS | sha256sum --check   # macOS: shasum -a 256 --check
+tar -xzf "lazyrex_${v}_${os}_${arch}.tar.gz"
+mkdir -p ~/.local/bin
+install "lazyrex_${v}_${os}_${arch}/lazyrex" ~/.local/bin/
+```
+
+The macOS binaries are unsigned: one downloaded with a browser needs `xattr -d com.apple.quarantine` before it runs. Or, with Go 1.26:
 
 ```sh
 go install github.com/rbobillot/lazyrex/cmd/lazyrex@latest
@@ -75,7 +89,7 @@ lazyrex --ssh user@remote-host   # start on an SSH target
 | [Configuration](docs/configuration.md) | Every config key and its default |
 | [Troubleshooting](docs/troubleshooting.md) | Target states, errors and exit codes |
 | [Architecture](docs/architecture.md) | Packages, transports, events and polling |
-| [Development](docs/development.md) | Building, tests, the multi-agent harness |
+| [Development](docs/development.md) | Building, tests, CI and releases, the multi-agent harness |
 
 The same pages are published as the [wiki](https://github.com/rbobillot/lazyrex/wiki), generated from `docs/` by CI: edit `docs/`, never the wiki.
 
