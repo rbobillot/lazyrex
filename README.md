@@ -76,7 +76,7 @@ lazyrex --ssh user@remote-host   # start on an SSH target
 | [Docs home](docs/index.md) | What to read first |
 | [Getting started](docs/getting-started.md) | Install, first run, the panels, moving around |
 | [Targets](docs/targets.md) | Local server, native hosts, SSH targets, `--server` and `--ssh` |
-| [SSH targets](docs/ssh.md) | Forward and exec modes, probes, fallbacks, SSH troubleshooting |
+| [SSH targets](docs/ssh.md) | Forward and exec modes, probes, fallbacks, the Rex app endpoint, SSH troubleshooting |
 | [Keys](docs/keys.md) | Every keybinding and how to override it |
 | [Actions](docs/actions.md) | Action menus, forms, server and client actions, the command palette |
 | [Safety](docs/safety.md) | What lazyrex refuses, confirms and redacts |

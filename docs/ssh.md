@@ -78,11 +78,11 @@ sequenceDiagram
     L->>S: ssh -- remote-host rex whoami --json
     S->>R: whoami
     R-->>L: endpoint unix:///path/to/rex.sock
-    L->>S: ssh -N -L fwd-PID-N.sock:/path/to/rex.sock -- remote-host
+    L->>S: ssh -N -L gui-NAME_HASH.sock:/path/to/rex.sock -- remote-host
     Note over L,S: the local socket lives in the private runtime directory
     rect rgba(34,197,94,0.15)
     loop every call and the event stream
-        L->>R: rex -S unix://fwd-PID-N.sock ARGS, through the tunnel
+        L->>R: rex -S unix://gui-NAME_HASH.sock ARGS, through the tunnel
     end
     end
     rect rgba(239,68,68,0.18)
@@ -92,10 +92,33 @@ sequenceDiagram
     end
 ```
 
-- After `whoami` over ssh gives the remote server's endpoint, an `ssh -N` tunnel forwards that Unix socket to `fwd-PID-N.sock` in the runtime directory, and every call runs the local `rex -S unix://…` on it, except `server start`, which goes over exec.
+- After `whoami` over ssh gives the remote server's endpoint, an `ssh -N` tunnel forwards that Unix socket to `gui-NAME_HASH.sock` in the runtime directory, and every call runs the local `rex -S unix://…` on it, except `server start`, which goes over exec.
+- **Stable socket**: `NAME` is the target name made safe and cut to 14 characters, `HASH` 16 hex digits of the target identity (its name ignoring case, `ssh_host` and `rex_path`), so one target keeps one path across restarts. While a tunnel uses it, lazyrex holds `gui-NAME_HASH.lock` next to it (an exclusive `flock`, gone when lazyrex exits, never deleted). A second lazyrex on the same target, or a live socket already at the path, makes the tunnel use a private `fwd-PID-N.sock` instead. lazyrex removes a socket only when a dial to it is refused; ssh never removes one.
 - A dropped tunnel is restarted with backoff (1s up to 30s, reset once it was up); meanwhile commands are refused, never sent elsewhere. The tunnel is killed and its socket removed when another target is activated and on quit.
-- The tunnel runs with `ExitOnForwardFailure=yes`, `StreamLocalBindUnlink=yes`, its own connection (`ControlMaster=no`, `ControlPath=none`) and keepalives (`ServerAliveInterval=15`, `ServerAliveCountMax=3`). lazyrex opens no TCP listener.
-- **Fallback**: only when the endpoint cannot be forwarded does the target fall back to exec mode, with a line in the command log; a forwarded call failing does not. An endpoint cannot be forwarded when it is not a `unix://` URI with an absolute path and no query or fragment, has a malformed percent escape, or has a path that, once percent-decoded, holds `:`, `%`, `${`, whitespace or control characters or is over 104 bytes. The default macOS socket under `Application Support` has a space, so a macOS server uses exec mode.
+- The tunnel runs with `ExitOnForwardFailure=yes`, its own connection (`ControlMaster=no`, `ControlPath=none`) and keepalives (`ServerAliveInterval=15`, `ServerAliveCountMax=3`). lazyrex opens no TCP listener.
+- **Fallback**: only when the endpoint cannot be forwarded does the target fall back to exec mode, with a line in the command log; a forwarded call failing does not. An endpoint cannot be forwarded when it is not a `unix://` URI with an absolute path and no query or fragment, has a malformed percent escape, or has a path that, once percent-decoded, holds `:`, `%`, `${`, `\`, whitespace other than a space or control characters or is over 104 bytes. A space is kept, so a macOS server, whose socket is under `Application Support`, uses forward mode.
+
+## Using the remote server from the Rex app
+
+> 🖥️ **The short version**: activate the SSH target, then run the `rex hosts add` line its Status tab shows, once. The Rex app then reaches that server while lazyrex runs with the target active.
+
+The Status tab of an active forward-mode target shows:
+
+```text
+gui endpoint  unix:///private/tmp/lazyrex-501/run/gui-edge_883cac6c085904fe.sock
+
+Rex app: add a host with this endpoint, or run once (lazyrex never runs it):
+rex hosts add edge unix:///private/tmp/lazyrex-501/run/gui-edge_883cac6c085904fe.sock
+```
+
+That is target `edge` with `ssh_host: edge` on macOS, where `/tmp` resolves to `/private/tmp`.
+
+- **Label**: the line uses the target name, so the synced host and the SSH row stay one row: Targets hides the host, with a `hosts: hid "edge": the name is taken by target "edge"` line in the command log. That is expected. Under another label it would be a native row, and activating it would end the tunnel it goes through.
+- **Lifetime**: the socket exists only while lazyrex runs with the target active; lazyrex installs no service. Renaming the target or changing `ssh_host` or `rex_path` changes the path: add the host again.
+- **Access**: Rex has no transport authentication on a Unix socket, but the runtime directory is yours alone (mode 0700).
+- **Other devices**: Rex syncs hosts to your other devices, where this path reaches nothing unless a lazyrex forwards it there, possibly to another machine if `ssh_host` resolves differently there.
+- **Two lazyrex**: the second one says `served by another lazyrex for this same target` and uses a private socket; activate the target again once the first quits to take the stable one over.
+- There is no endpoint in exec mode, configured or as a fallback: the Status tab says why.
 
 ## Exec mode
 
@@ -116,7 +139,9 @@ Forward mode runs your local `rex` against the remote server; exec mode runs the
 | `unreachable (ssh)` | ssh itself failed (exit 255: network, authentication or host key). The Status tab shows its first stderr line, the command log all of it | run `ssh remote-host` in a terminal until it logs in without a prompt, then `c` |
 | `ssh reaches remote-host, but not its Rex server through the tunnel` | ssh works, but Rex does not answer through the tunnel | check the remote server, then `c` |
 | `ssh tunnel: ... (retry in 4s)` | the tunnel process exited; lazyrex retries with backoff | read the line in the command log |
-| a note `...: cannot be forwarded: using exec mode` | the endpoint cannot be forwarded (a macOS socket path with a space, for example) | nothing, or set `mode: exec` to say so |
+| a note `...: cannot be forwarded: using exec mode` | the endpoint cannot be forwarded (a socket path with `%` or `\`, for example) | nothing, or set `mode: exec` to say so |
+| `gui endpoint ... (served by another lazyrex for this same target ...)` | another lazyrex holds the stable socket, or a live socket is at its path | quit the other lazyrex, then activate the target again |
+| the tunnel is up but every call fails with `ssh reaches remote-host, but not its Rex server through the tunnel` | the server refuses socket forwarding: `AllowStreamLocalForwarding no` in its `sshd_config`, or `restrict` or `no-port-forwarding` on your key in `authorized_keys` | allow forwarding there, or set `mode: exec` |
 | `rex not found on remote-host (set rex_path)` | neither `command -v rex` nor a known path found `rex` in the non-interactive login shell | set `rex_path` to its absolute path |
 | `exec mode needs a POSIX login shell (sh, bash, zsh...) on remote-host; its shell is fish` | exec mode cannot quote words for that shell | use `mode: forward`, or a POSIX login shell |
 | `the login shell on remote-host is not POSIX: lazyrex sends it plain words only` | a word (a `rex_path` with spaces, such as the Rex Beta.app one, or a payload) is not a plain word | make `rex` reachable through `command -v rex` or a path without spaces |
