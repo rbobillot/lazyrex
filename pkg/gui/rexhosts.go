@@ -377,7 +377,7 @@ func (c *Controller) commitRexHosts(l rexHostsLoad) {
 	}
 	c.rhBusy = true
 	c.ui.Go(func() {
-		err := rexhosts.Write(l.paths, l.data, l.snap)
+		err := c.writeHosts(l.paths, l.data, l.snap)
 		c.ui.Update(func() {
 			c.rhBusy = false
 			path := render.Label(l.paths.Hosts)
@@ -387,6 +387,8 @@ func (c *Controller) commitRexHosts(l rexHostsLoad) {
 				c.Popups.Error(path + " changed on disk since lazyrex read it; press w again")
 			case errors.Is(err, rexhosts.ErrBusy):
 				c.Popups.Error("another lazyrex is writing " + path + "; press w again")
+			case errors.Is(err, rexhosts.ErrNotSynced):
+				c.Popups.Error(path + " " + err.Error() + "; press w again")
 			case errors.As(err, &foreign):
 				c.Popups.Error(fmt.Sprintf("%s is not a file lazyrex wrote (%s): lazyrex leaves it alone", path, render.Label(foreign.Why)))
 			case err != nil:

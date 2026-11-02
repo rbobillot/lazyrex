@@ -25,6 +25,7 @@ var (
 	beforeRename = func() {}
 	beforeOpen   = func() {}
 	lockBusy     = func() {}
+	syncDir      = func(d *os.File) error { return d.Sync() }
 	lockWait     = 2 * time.Second
 	lockPoll     = 50 * time.Millisecond
 	// ownerOf is the owner of the "dir" or the "file".
@@ -247,6 +248,8 @@ func Write(p Paths, data []byte, seen Snapshot) error {
 		return err
 	}
 	renamed = true
-	_ = d.Sync()
+	if err := syncDir(d); err != nil && !errors.Is(err, unix.EINVAL) && !errors.Is(err, unix.ENOTSUP) {
+		return fmt.Errorf("%w (%v)", ErrNotSynced, err)
+	}
 	return nil
 }

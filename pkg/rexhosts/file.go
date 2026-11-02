@@ -27,6 +27,9 @@ var (
 	ErrChanged   = errors.New("changed on disk since lazyrex read it")
 	ErrBusy      = errors.New("another lazyrex is writing it")
 	ErrUnsafeDir = errors.New("not a private directory of yours")
+	// ErrNotSynced is a write that replaced the file but may not survive a
+	// crash.
+	ErrNotSynced = errors.New("written, but its directory was not synced to disk")
 )
 
 // ForeignError is ErrForeign with the reason.

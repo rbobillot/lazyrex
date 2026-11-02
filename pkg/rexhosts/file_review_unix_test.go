@@ -7,8 +7,37 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 )
+
+// TestWriteDirSync: a failed sync of the directory after the rename is no
+// success, though the file is already replaced; a filesystem that cannot
+// sync a directory at all is not a failure.
+func TestWriteDirSync(t *testing.T) {
+	for _, tc := range []struct {
+		err     error
+		synced  bool
+		wantErr bool
+	}{
+		{syscall.EIO, false, true},
+		{syscall.EINVAL, true, false},
+		{syscall.ENOTSUP, true, false},
+	} {
+		p := mkdir(t, testPaths(t))
+		hook(t, &syncDir, func(*os.File) error { return &fs.PathError{Op: "sync", Path: p.Dir, Err: tc.err} })
+		err := Write(p, ours("b\n"), Snapshot{State: Absent})
+		if got := errors.Is(err, ErrNotSynced); got != tc.wantErr || (err != nil) != tc.wantErr {
+			t.Fatalf("sync error %v: Write = %v", tc.err, err)
+		}
+		if read(t, p.Hosts) != string(ours("b\n")) {
+			t.Fatalf("sync error %v: file = %q", tc.err, read(t, p.Hosts))
+		}
+		if tmp := temps(t, p.Dir); len(tmp) != 0 {
+			t.Fatalf("sync error %v: temporary files left: %q", tc.err, tmp)
+		}
+	}
+}
 
 // TestWriteSymlinkSwap: a symlink planted at the file between its Lstat and
 // its open is never followed, even to a hard link of the very file, which
