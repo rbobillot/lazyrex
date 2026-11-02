@@ -1,0 +1,279 @@
+name: release
+
+# Publishes the binaries of a version tag (docs/development.md#releases). Push one tag at a time: GitHub
+# creates no event when more than three tags are pushed at once.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      commit: ${{ steps.verify.outputs.commit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # origin/main and every tag
+          persist-credentials: false
+          show-progress: false
+      - id: verify
+        name: Verify
+        env:
+          TAG: ${{ github.ref_name }}
+          REF: ${{ github.ref }}
+          PUSHED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          die() { printf 'release: %s\n' "$1" >&2; exit 1; }
+          re='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$'
+          [[ $TAG =~ $re ]] || die "tag $(printf %q "$TAG") is not vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-rc.N"
+          [[ $REF == "refs/tags/$TAG" ]] || die "ref $(printf %q "$REF") is not refs/tags/$TAG"
+          [[ $PUSHED_SHA =~ ^[0-9a-f]{40}$ ]] || die "bad pushed sha"
+          commit=$(git rev-parse --verify --quiet "refs/tags/${TAG}^{commit}") || die "no tag $TAG in the checkout"
+          pushed=$(git rev-parse --verify --quiet "${PUSHED_SHA}^{commit}") || die "the pushed ${PUSHED_SHA:0:12} is not in the checkout"
+          [[ $commit == "$pushed" ]] || die "tag $TAG is at ${commit:0:12}, not at the pushed ${pushed:0:12}: it moved"
+          git rev-parse --verify --quiet refs/remotes/origin/main >/dev/null || die "no origin/main in the checkout"
+          git merge-base --is-ancestor "$commit" refs/remotes/origin/main || die "$TAG (${commit:0:12}) is not on main"
+          printf 'commit=%s\n' "$commit" >>"$GITHUB_OUTPUT"
+          printf 'release: %s is %s, on main\n' "$TAG" "${commit:0:12}"
+
+  ci:
+    needs: verify
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.verify.outputs.commit }}
+    permissions:
+      contents: read
+
+  build:
+    needs: [verify, ci]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GOTOOLCHAIN: local
+    outputs:
+      go-version: ${{ steps.build.outputs.go-version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.verify.outputs.commit }}
+          persist-credentials: false
+          show-progress: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - id: build
+        name: Build
+        env:
+          TAG: ${{ github.ref_name }}
+          COMMIT: ${{ needs.verify.outputs.commit }}
+          DIST: ${{ runner.temp }}/dist
+        run: |
+          set -euo pipefail
+          export LC_ALL=C
+          die() { printf 'release: %s\n' "$1" >&2; exit 1; }
+          re='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$'
+          [[ $TAG =~ $re ]] || die "tag $(printf %q "$TAG") is not vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-rc.N"
+          [[ $COMMIT =~ ^[0-9a-f]{40}$ ]] || die "bad commit"
+          [[ $(git rev-parse HEAD) == "$COMMIT" ]] || die "the checkout is not at ${COMMIT:0:12}"
+          [[ -z $(git status --porcelain --untracked-files=all) ]] || die "the checkout is not clean"
+          [[ ! -e $DIST ]] || die "$DIST exists"
+          gover=$(go env GOVERSION)
+          [[ $gover =~ ^go[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || die "bad go version $(printf %q "$gover")"
+          version=${TAG#v}
+          epoch=$(git log -1 --format=%ct HEAD)
+          work=$(mktemp -d)
+          trap 'rm -rf -- "$work"' EXIT
+          mkdir -- "$DIST"
+          unset GOFLAGS
+          export CGO_ENABLED=0
+          targets=(linux/amd64 linux/arm64 darwin/amd64 darwin/arm64)
+          for target in "${targets[@]}"; do
+            name=lazyrex_${version}_${target%/*}_${target#*/}
+            mkdir -- "$work/$name"
+            GOOS=${target%/*} GOARCH=${target#*/} go build -trimpath -buildvcs=false -ldflags "-s -w -buildid= -X main.version=$TAG" -o "$work/$name/lazyrex" ./cmd/lazyrex
+            cp -- LICENSE README.md "$work/$name/"
+            chmod 0755 "$work/$name" "$work/$name/lazyrex"
+            chmod 0644 "$work/$name/LICENSE" "$work/$name/README.md"
+            tar --format=ustar --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$epoch" -C "$work" -cf - -- "$name" |
+              gzip -9n >"$DIST/$name.tar.gz"
+          done
+          (cd -- "$DIST" && sha256sum -- lazyrex_*.tar.gz >SHA256SUMS)
+          printf 'go-version=%s\n' "$gover" >>"$GITHUB_OUTPUT"
+          printf 'release: built %s with %s\n' "$TAG" "$gover"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-dist
+          path: ${{ runner.temp }}/dist
+          if-no-files-found: error
+          retention-days: 1
+
+  # The only job with contents: write: no checkout, no Go, no build; only the built archives, git ls-remote and gh.
+  publish:
+    needs: [verify, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-dist
+          path: ${{ runner.temp }}/dist
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          COMMIT: ${{ needs.verify.outputs.commit }}
+          GO_VERSION: ${{ needs.build.outputs.go-version }}
+          SOURCE_REMOTE: https://github.com/${{ github.repository }}.git
+          DIST: ${{ runner.temp }}/dist
+        run: |
+          { set +x; } 2>/dev/null
+          set -euo pipefail
+          export LC_ALL=C GIT_TERMINAL_PROMPT=0 GH_PROMPT_DISABLED=1 GH_NO_UPDATE_NOTIFIER=1
+          export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
+          die() { printf 'release: %s\n' "$1" >&2; exit 1; }
+          re='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$'
+          [[ $TAG =~ $re ]] || die "tag $(printf %q "$TAG") is not vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-rc.N"
+          [[ $COMMIT =~ ^[0-9a-f]{40}$ ]] || die "bad commit"
+          [[ $GO_VERSION =~ ^go[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || die "bad go version"
+          [[ $GH_REPO =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die "bad repository"
+          version=${TAG#v}
+          assets=()
+          for target in darwin_amd64 darwin_arm64 linux_amd64 linux_arm64; do assets+=("lazyrex_${version}_${target}.tar.gz"); done
+          shopt -s nullglob dotglob
+          entries=("$DIST"/*)
+          ((${#entries[@]} == ${#assets[@]} + 1)) || die "the artifact holds ${#entries[@]} entries, want ${#assets[@]} archives and SHA256SUMS"
+          for name in "${assets[@]}" SHA256SUMS; do
+            [[ -f $DIST/$name && ! -L $DIST/$name ]] || die "the artifact lacks $name"
+          done
+          i=0
+          while IFS= read -r line; do
+            ((i < ${#assets[@]})) || die "SHA256SUMS has extra lines"
+            [[ $line =~ ^[0-9a-f]{64}\ \ (.*)$ && ${BASH_REMATCH[1]} == "${assets[i]}" ]] ||
+              die "SHA256SUMS line $((i + 1)) is not the checksum of ${assets[i]}"
+            i=$((i + 1))
+          done <"$DIST/SHA256SUMS"
+          ((i == ${#assets[@]})) || die "SHA256SUMS lists $i archives, want ${#assets[@]}"
+          (cd -- "$DIST" && sha256sum --check --strict --quiet SHA256SUMS) || die "an archive does not match SHA256SUMS"
+          assets+=(SHA256SUMS)
+
+          # Read without credentials: the repository is public.
+          tag_commit() {
+            local out sha ref direct="" peeled=""
+            out=$(git ls-remote --tags -- "$SOURCE_REMOTE" "refs/tags/$TAG" "refs/tags/$TAG^{}") || return 1
+            while IFS=$'\t' read -r sha ref; do
+              [[ $sha =~ ^[0-9a-f]{40}$ ]] || continue
+              if [[ $ref == "refs/tags/$TAG" ]]; then direct=$sha; fi
+              if [[ $ref == "refs/tags/$TAG^{}" ]]; then peeled=$sha; fi
+            done <<<"$out"
+            printf '%s' "${peeled:-$direct}"
+          }
+          # tag_at_commit when outcome: dies unless the tag still names COMMIT.
+          tag_at_commit() {
+            local now
+            now=$(tag_commit) || die "could not read tag $TAG from ${SOURCE_REMOTE} $1: $2"
+            [[ -n $now ]] || die "tag $TAG was deleted $1: $2"
+            [[ $now == "$COMMIT" ]] || die "tag $TAG moved to ${now:0:12} $1, past the built ${COMMIT:0:12}: $2"
+          }
+          tag_at_commit "before the publication" "nothing published"
+
+          work=$(mktemp -d)
+          trap 'rm -rf -- "$work"' EXIT
+          export GH_CONFIG_DIR=$work/gh
+          releases() { gh api --paginate "repos/${GH_REPO}/releases?per_page=100" --jq '.[] | "\(.id) \(.draft) \(.tag_name)"'; }
+          list=$(releases) || die "could not list the releases"
+          while read -r rid draft name; do
+            [[ $name != "$TAG" ]] || die "a release of $TAG exists (id $rid, draft $draft): nothing replaced; delete it by hand to publish again"
+          done <<<"$list"
+
+          generated=$(gh api --method POST "repos/${GH_REPO}/releases/generate-notes" -f tag_name="$TAG" --jq .body) ||
+            die "could not generate the release notes: nothing published"
+          {
+            printf 'Built from %s with %s:\n\n' "$COMMIT" "$GO_VERSION"
+            printf '```sh\nGOOS=<linux|darwin> GOARCH=<amd64|arm64> CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags "-s -w -buildid= -X main.version=%s" ./cmd/lazyrex\n```\n\n' "$TAG"
+            printf 'Check a download with `sha256sum --check --ignore-missing SHA256SUMS`.\n\n%s\n' "$generated"
+          } >"$work/notes.md"
+          pre=false latest=true
+          if [[ $TAG == *-rc.* ]]; then pre=true latest=false; fi
+          args=(release create "$TAG" --draft --verify-tag --title "$TAG" --notes-file "$work/notes.md")
+          if [[ $pre == true ]]; then args+=(--prerelease); fi
+          for name in "${assets[@]}"; do args+=("$DIST/$name"); done
+          gh "${args[@]}" >/dev/null || die "gh release create failed: delete any draft of $TAG in ${GH_REPO} before running again"
+
+          id="" n=0
+          for attempt in 1 2 3; do
+            list=$(releases) || die "could not list the releases after creating the draft of $TAG: review it, nothing published"
+            id="" n=0
+            while read -r rid draft name; do
+              [[ $name == "$TAG" ]] || continue
+              n=$((n + 1)) id=$rid
+              [[ $draft == true ]] || die "the release of $TAG (id $rid) is not a draft: review it"
+            done <<<"$list"
+            ((n == 0)) || break
+            sleep 1
+          done
+          ((n == 1)) || die "found $n releases of $TAG after creating its draft: review them, nothing published"
+          [[ $id =~ ^[1-9][0-9]*$ ]] || die "bad release id $(printf %q "$id")"
+
+          keep="the draft (id $id) is left for review, nothing published"
+          got=$(gh api "repos/${GH_REPO}/releases/${id}" --jq '"release \(.draft) \(.tag_name)", (.assets[] | "asset \(.id) \(.state) \(.size) \(.digest // "none") \(.name)")') ||
+            die "could not read the draft of $TAG: $keep"
+          header=$(head -n 1 <<<"$got")
+          [[ $header == "release true $TAG" ]] || die "release $id is not the draft of $TAG: $keep"
+          mkdir -- "$work/dl"
+          checked=" "
+          while read -r kind aid state size digest name extra; do
+            [[ $kind == asset ]] || die "unexpected line in the draft: $keep"
+            [[ -z $extra && $aid =~ ^[1-9][0-9]*$ ]] || die "unexpected asset line in the draft: $keep"
+            known=false
+            for want in "${assets[@]}"; do
+              if [[ $name == "$want" ]]; then known=true; fi
+            done
+            [[ $known == true ]] || die "the draft holds an unexpected asset $(printf %q "$name"): $keep"
+            [[ $checked != *" $name "* ]] || die "the draft holds $name twice: $keep"
+            [[ $state == uploaded ]] || die "$name is $(printf %q "$state") in the draft, not uploaded: $keep"
+            [[ $size == "$(wc -c <"$DIST/$name" | tr -d ' ')" ]] || die "$name has another size in the draft: $keep"
+            sum=$(sha256sum -- "$DIST/$name" | cut -d ' ' -f 1)
+            if [[ $digest == none ]]; then
+              gh api -H 'Accept: application/octet-stream' "repos/${GH_REPO}/releases/assets/${aid}" >"$work/dl/$name" ||
+                die "could not download $name from the draft: $keep"
+              digest=sha256:$(sha256sum -- "$work/dl/$name" | cut -d ' ' -f 1)
+            fi
+            [[ $digest =~ ^sha256:[0-9a-f]{64}$ ]] || die "$name has an unknown digest $(printf %q "$digest") in the draft: $keep"
+            [[ $digest == "sha256:$sum" ]] || die "$name in the draft does not match the built archive: $keep"
+            checked+="$name "
+          done < <(tail -n +2 <<<"$got")
+          for want in "${assets[@]}"; do
+            [[ $checked == *" $want "* ]] || die "the draft lacks $want: $keep"
+          done
+          tag_at_commit "after the upload" "$keep"
+
+          # A tag moved from here to the PATCH goes unseen until the check after it: the risk the human accepted.
+          state=$(gh api --method PATCH "repos/${GH_REPO}/releases/${id}" -F draft=false -f make_latest="$latest" --jq .draft) ||
+            die "could not publish the draft of $TAG (id $id): it is left for review"
+          [[ $state == false ]] || die "the release of $TAG (id $id) is still a draft: review it"
+
+          if now=$(tag_commit); then
+            [[ $now == "$COMMIT" ]] ||
+              die "tag $TAG moved to ${now:-nothing (deleted)} while ${COMMIT:0:12} was published: review the release (id $id)"
+          else
+            printf 'release: could not re-read tag %s after publishing\n' "$TAG"
+          fi
+          printf 'release: published %s from %s\n' "$TAG" "${COMMIT:0:12}"
