@@ -32,6 +32,39 @@ const (
 	modeExec
 )
 
+// claimState is how a tunnel loop holds the stable socket.
+type claimState int
+
+const (
+	claimPending claimState = iota
+	claimHeld
+	claimElsewhere
+	claimFailed
+)
+
+// GUIState is what the Rex app can reach of an SSH target through lazyrex.
+type GUIState int
+
+const (
+	// GUINone: nothing to say yet (not connected, or the claim pending).
+	GUINone GUIState = iota
+	GUIForwarded
+	GUIDown
+	// GUIElsewhere: another lazyrex serves the stable socket.
+	GUIElsewhere
+	GUIUnavailable
+	GUIExecMode
+	GUIUnforwardable
+)
+
+// GUIEndpoint is the endpoint the Rex app can use for an SSH target. URI is
+// set when forwarded, down or elsewhere, Why when unavailable or
+// unforwardable.
+type GUIEndpoint struct {
+	State    GUIState
+	URI, Why string
+}
+
 type tunnelExit struct {
 	code  int
 	line  string
@@ -45,6 +78,7 @@ type SSHLink struct {
 	o        LinkOptions
 	ctx      context.Context
 	dir      string
+	stable   string
 	setupErr error
 
 	mu        sync.Mutex
@@ -52,10 +86,13 @@ type SSHLink struct {
 	mode      linkMode
 	fallback  bool
 	fellBack  bool
+	why       error
 	remote    string
 	loop      uint64
 	stopLoop  context.CancelFunc
 	socket    string
+	claim     claimState
+	claimErr  error
 	up        bool
 	exit      *tunnelExit
 	routeGen  uint64
@@ -85,6 +122,7 @@ func NewSSHLink(ctx context.Context, o LinkOptions) *SSHLink {
 		return l
 	}
 	l.dir = dir
+	l.stable = dir + "/" + stableSocketName(o.Name, o.Spec)
 	return l
 }
 
@@ -334,6 +372,7 @@ func (l *SSHLink) useExec(g uint64, why error) bool {
 		l.mode, l.fallback = modeExec, fallback
 		l.routeGen++
 	}
+	l.why = why
 	l.stopLoopLocked()
 	note := fallback && !l.fellBack
 	l.fellBack = l.fellBack || fallback
@@ -366,22 +405,22 @@ func (l *SSHLink) stopLoopLocked() {
 		l.stopLoop()
 		l.stopLoop = nil
 		l.loop++
-		l.up, l.exit, l.socket = false, nil, ""
+		l.up, l.exit, l.socket, l.claim, l.claimErr = false, nil, "", claimPending, nil
 		l.routeGen++
 	}
 }
 
-// startLoopLocked replaces the tunnel loop with one forwarding a new local
-// socket to remote. Only the newest loop publishes state.
+// startLoopLocked replaces the tunnel loop with one forwarding a local
+// socket, which the loop picks, to remote. Only the newest loop publishes
+// state.
 func (l *SSHLink) startLoopLocked(remote string) {
 	l.stopLoopLocked()
 	l.loop++
 	g := l.loop
-	sock := l.o.Env.socketPath(l.dir)
-	l.remote, l.socket, l.up, l.exit = remote, sock, false, nil
+	l.remote, l.socket, l.up, l.exit, l.claim, l.claimErr = remote, "", false, nil, claimPending, nil
 	l.routeGen++
 	ctx, cancel := context.WithCancel(l.ctx)
-	if l.o.Group.Go(func() { l.runLoop(ctx, g, sock, remote) }) {
+	if l.o.Group.Go(func() { l.runLoop(ctx, g, remote) }) {
 		l.stopLoop = cancel
 	} else {
 		cancel()
@@ -408,17 +447,31 @@ func (l *SSHLink) notify(up bool) {
 }
 
 // runLoop keeps the tunnel up until ctx ends, restarting it with backoff
-// (Min doubling up to Max, reset once it was ready).
-func (l *SSHLink) runLoop(ctx context.Context, g uint64, sock, remote string) {
+// (Min doubling up to Max, reset once it was ready). It forwards the stable
+// socket while it holds it, else a private one; the claim is released after
+// the last Cleanup.
+func (l *SSHLink) runLoop(ctx context.Context, g uint64, remote string) {
 	env := l.o.Env
+	sock, release := l.claimSocket(ctx, g)
+	if release == nil {
+		return
+	}
+	defer func() { release() }()
 	backoff := env.Min
 	for ctx.Err() == nil {
-		ready, res := l.once(ctx, g, sock, remote)
+		ready, res, live := l.once(ctx, g, sock, remote)
 		if ready {
 			backoff = env.Min
 		}
 		if ctx.Err() != nil {
 			return
+		}
+		if live && sock == l.stable {
+			release()
+			release = func() {}
+			sock = env.socketPath(l.dir)
+			l.publish(g, func() { l.socket, l.claim = sock, claimElsewhere })
+			continue
 		}
 		line := ToastLine(res.Stderr)
 		if line == "" {
@@ -437,16 +490,44 @@ func (l *SSHLink) runLoop(ctx context.Context, g uint64, sock, remote string) {
 	}
 }
 
-// once runs one tunnel process and reports whether its socket became ready.
-func (l *SSHLink) once(ctx context.Context, g uint64, sock, remote string) (bool, Result) {
+// claimSocket returns the socket loop g forwards, the stable one when this
+// loop could claim it, and the release of that claim; a nil release when
+// ctx ended first.
+func (l *SSHLink) claimSocket(ctx context.Context, g uint64) (string, func()) {
+	env := l.o.Env
+	inproc, ok := env.claim(ctx, l.stable)
+	if !ok {
+		return "", nil
+	}
+	held, err := env.Sockets.Claim(l.dir, l.stable)
+	if err == nil {
+		l.publish(g, func() { l.socket, l.claim = l.stable, claimHeld })
+		return l.stable, func() {
+			held()
+			inproc()
+		}
+	}
+	inproc()
+	state, why := claimFailed, err
+	if errors.Is(err, ErrSocketHeld) {
+		state, why = claimElsewhere, nil
+	}
+	sock := env.socketPath(l.dir)
+	l.publish(g, func() { l.socket, l.claim, l.claimErr = sock, state, why })
+	return sock, func() {}
+}
+
+// once runs one tunnel process and reports whether its socket became ready,
+// and whether Prepare found a live socket at sock.
+func (l *SSHLink) once(ctx context.Context, g uint64, sock, remote string) (bool, Result, bool) {
 	sockets := l.o.Env.Sockets
 	if err := sockets.Prepare(l.dir, sock); err != nil {
-		return false, Result{Code: -1, Stderr: []byte(err.Error())}
+		return false, Result{Code: -1, Stderr: []byte(err.Error())}, errors.Is(err, ErrLiveSocket)
 	}
 	ls, err := l.o.Base.streamArgv(ctx, tunnelArgv(l.o.Spec.Host, sock, remote))
 	if err != nil {
 		sockets.Cleanup(sock)
-		return false, Result{Code: -1, Stderr: []byte(err.Error())}
+		return false, Result{Code: -1, Stderr: []byte(err.Error())}, false
 	}
 	exited := make(chan struct{})
 	go func() {
@@ -461,7 +542,32 @@ func (l *SSHLink) once(ctx context.Context, g uint64, sock, remote string) (bool
 	<-exited
 	res := ls.Wait()
 	sockets.Cleanup(sock)
-	return ready, res
+	return ready, res, false
+}
+
+// GUIEndpoint says what the Rex app can use to reach this target's server.
+func (l *SSHLink) GUIEndpoint() GUIEndpoint {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	switch {
+	case l.mode == modeExec && l.fallback:
+		return GUIEndpoint{State: GUIUnforwardable, Why: l.why.Error()}
+	case l.mode == modeExec:
+		return GUIEndpoint{State: GUIExecMode}
+	case l.mode != modeForward:
+		return GUIEndpoint{}
+	}
+	switch {
+	case l.claim == claimElsewhere:
+		return GUIEndpoint{State: GUIElsewhere, URI: SocketURI(l.stable)}
+	case l.claim == claimFailed:
+		return GUIEndpoint{State: GUIUnavailable, Why: l.claimErr.Error()}
+	case l.claim == claimHeld && l.up:
+		return GUIEndpoint{State: GUIForwarded, URI: SocketURI(l.stable)}
+	case l.claim == claimHeld:
+		return GUIEndpoint{State: GUIDown, URI: SocketURI(l.stable)}
+	}
+	return GUIEndpoint{}
 }
 
 // ProbeSSH reads the status of an SSH target that is not active: its probes,
