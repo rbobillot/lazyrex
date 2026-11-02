@@ -9,7 +9,7 @@ Report bugs and ask for features in [GitHub issues](https://github.com/rbobillot
 ## Pull requests
 
 ```sh
-git clone https://github.com/<you>/lazyrex.git   # your fork
+git clone https://github.com/YOUR-GITHUB-USERNAME/lazyrex.git   # your fork
 cd lazyrex
 git remote add upstream https://github.com/rbobillot/lazyrex.git
 git fetch upstream
@@ -44,7 +44,7 @@ Tests never contact a remote host and never run the real `rex` or `ssh`: unit te
 
 ## Docs
 
-Edit `docs/`, never the [wiki](https://github.com/rbobillot/lazyrex/wiki): CI generates it from `docs/` and overwrites any edit made there. `go run ./tools/wikisync` checks the docs the way CI renders them; the rules for links and markup are in [The wiki](docs/development.md#the-wiki).
+Edit `docs/`, never the [wiki](https://github.com/rbobillot/lazyrex/wiki): CI generates it from `docs/` and overwrites any edit made there. `go run ./tools/wikisync` checks the docs the way CI renders them. It reads the committed docs at `HEAD`, not your working tree: commit first, then run it. The rules for links and markup are in [The wiki](docs/development.md#the-wiki).
 
 ## Releases
 
