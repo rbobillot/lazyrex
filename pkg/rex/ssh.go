@@ -2,6 +2,8 @@ package rex
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/url"
@@ -74,8 +76,7 @@ const (
 )
 
 // NormalizeEndpoint returns the percent-decoded socket path of a `unix://`
-// endpoint, or an error when the endpoint cannot be forwarded. ssh expands
-// '%' and '${' in -L, so a decoded path holding either cannot be forwarded.
+// endpoint, or an error when the endpoint cannot be forwarded.
 func NormalizeEndpoint(endpoint string) (string, error) {
 	if len(endpoint) > maxEndpoint {
 		return "", fmt.Errorf("endpoint is longer than %d bytes", maxEndpoint)
@@ -100,10 +101,14 @@ func NormalizeEndpoint(endpoint string) (string, error) {
 		return "", errors.New("endpoint path is /")
 	case len(p) > maxEndpointPath:
 		return "", fmt.Errorf("endpoint path is longer than %d bytes", maxEndpointPath)
+	// ssh's -L expands '%' and '${', drops '\' as an escape and splits on
+	// ':'; a space survives. Other spaces would read as one on screen.
 	case strings.ContainsRune(p, ':'):
 		return "", fmt.Errorf("endpoint path %q contains ':'", render.Label(p))
-	case strings.IndexFunc(p, unicode.IsSpace) >= 0:
-		return "", fmt.Errorf("endpoint path %q contains whitespace", render.Label(p))
+	case strings.ContainsRune(p, '\\'):
+		return "", fmt.Errorf("endpoint path %q contains '\\'", render.Label(p))
+	case strings.IndexFunc(p, func(r rune) bool { return r != ' ' && unicode.IsSpace(r) }) >= 0:
+		return "", fmt.Errorf("endpoint path %q contains whitespace other than a space", render.Label(p))
 	case hasControl(p):
 		return "", errors.New("endpoint path contains control characters")
 	case strings.ContainsRune(p, '%'):
@@ -195,8 +200,75 @@ func pathProbeArgv(host string) []string  { return sshArgv(probeOpts(), host, pa
 
 func tunnelArgv(host, local, remote string) []string {
 	return []string{"ssh", "-N", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "-o", "ExitOnForwardFailure=yes",
-		"-o", "StreamLocalBindUnlink=yes", "-o", "ControlMaster=no", "-o", "ControlPath=none",
+		"-o", "ControlMaster=no", "-o", "ControlPath=none",
 		"-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3", "-L", local + ":" + remote, "--", host}
+}
+
+const (
+	stablePrefix = "gui-"
+	maxSlug      = 14
+	stableHex    = 16
+)
+
+var (
+	// ErrSocketHeld is the claim of a stable socket that another lazyrex
+	// holds.
+	ErrSocketHeld = errors.New("held by another lazyrex")
+	// ErrLiveSocket refuses to remove a socket that accepts connections.
+	ErrLiveSocket = errors.New("a live socket is at the path")
+)
+
+// stableSocketName names the socket the Rex app can reach a target through:
+// the same across runs for one target identity, distinct across identities.
+// Its v1 form is a contract with the hosts a human added, so never change it.
+func stableSocketName(name string, spec SSHSpec) string {
+	sum := sha256.Sum256([]byte("v1\x00" + foldKey(name) + "\x00" + spec.Host + "\x00" + spec.RexPath))
+	return stablePrefix + slug(name) + "_" + hex.EncodeToString(sum[:stableHex/2]) + ".sock"
+}
+
+// foldKey maps s to one string per strings.EqualFold class, which is how
+// target names are unique.
+func foldKey(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		m := r
+		for f := unicode.SimpleFold(r); f != r; f = unicode.SimpleFold(f) {
+			m = min(m, f)
+		}
+		b.WriteRune(m)
+	}
+	return b.String()
+}
+
+// slug is the readable part of a stable socket name, possibly empty.
+func slug(name string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(name) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '.':
+			b.WriteRune(r)
+		case !strings.HasSuffix(b.String(), "-"):
+			b.WriteByte('-')
+		}
+	}
+	s := strings.Trim(b.String(), "-")
+	return strings.TrimRight(s[:min(len(s), maxSlug)], "-")
+}
+
+// SocketURI is the endpoint of a local socket, as rex -S and the Rex app take
+// it.
+func SocketURI(path string) string { return (&url.URL{Scheme: "unix", Path: path}).String() }
+
+// HostsAddHint is the command a human runs for the Rex app; lazyrex shows it
+// and never runs it.
+func HostsAddHint(label, uri string) string {
+	words := []string{"rex", "hosts", "add", label, uri}
+	for i, w := range words {
+		if !plainWord(w) {
+			words[i] = ShellQuote(w)
+		}
+	}
+	return strings.Join(words, " ")
 }
 
 // SSHProbe is what lazyrex learns of an SSH target once: its login shell
