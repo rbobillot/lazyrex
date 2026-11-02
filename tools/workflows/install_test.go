@@ -72,10 +72,20 @@ while [ ! -e "$FIX_DIR/go" ]; do sleep 0.1; done
 exec "$REAL_CHMOD" "$@"
 `
 
+var (
+	// installTools are linked in the tools directory of an install fixture, and installHashers too when installed.
+	installTools   = []string{"tar", "gzip", "mkdir", "mktemp", "rm", "chmod", "mv", "cp", "sleep"}
+	installHashers = []string{"sha256sum", "shasum"}
+	// pathCommands are the commands an install test fakes, hides or picks through PATH.
+	pathCommands = slices.Concat([]string{"curl", "uname", "sysctl", "rex", "lazyrex"}, installTools, installHashers)
+)
+
 type program struct {
 	name, path string
-	// ownUname is the platform the shell's own uname reports when it runs its applets before PATH, as Ubuntu's
-	// busybox does with uname, tar, chmod, sha256sum and most other tools; empty when it runs PATH.
+	// own lists the pathCommands the shell runs or finds without PATH, as a shell running its own applets
+	// first does: Ubuntu's busybox with uname, tar, chmod, sha256sum and most other tools.
+	own []string
+	// ownUname is the platform the shell's own uname reports, when uname is in own.
 	ownUname string
 }
 
@@ -83,45 +93,77 @@ type program struct {
 type fakeUse int
 
 const (
-	// anyShell: no fake but curl, which no shell has as an applet, and logs of the other fakes only checked absent.
+	// anyShell: the fake curl, and logs of the other fakes only checked absent.
 	anyShell fakeUse = iota
-	// linuxAMD64: also a uname reporting Linux x86_64 like the fake one by default, which an applet shell's own
-	// uname does on such a host.
+	// linuxAMD64: the fake curl, rex and lazyrex, each hidden when absent from PATH, and a uname reporting
+	// Linux x86_64: the fake one, or the shell's own on such a host.
 	linuxAMD64
-	// allFakes: the fake uname, sysctl or chmod, or a tool hidden or picked in the tools directory.
+	// allFakes: every one of pathCommands.
 	allFakes
 )
 
 func (p program) runs(use fakeUse) bool {
-	switch {
-	case p.ownUname == "", use == anyShell:
-		return true
-	case use == linuxAMD64:
+	need := pathCommands
+	switch use {
+	case anyShell:
+		need = []string{"curl"}
+	case linuxAMD64:
+		need = []string{"curl", "rex", "lazyrex"}
+	}
+	if slices.ContainsFunc(p.own, func(c string) bool { return slices.Contains(need, c) }) {
+		return false
+	}
+	if use == linuxAMD64 && slices.Contains(p.own, "uname") {
 		return p.ownUname == "Linux x86_64" || p.ownUname == "Linux amd64"
 	}
-	return false
+	return true
 }
 
-// ownUname runs uname -s and uname -m in sh with only a fake uname in PATH: empty when sh ran the fake, else
-// what sh's own uname printed.
+// ownCommands lists the pathCommands sh does not take from PATH: with a fake of each in PATH, sh must run the
+// fake, and with an empty PATH, command -v must find none.
+func ownCommands(t *testing.T, sh string) []string {
+	t.Helper()
+	fakes, empty := t.TempDir(), t.TempDir()
+	for _, c := range pathCommands {
+		if err := os.WriteFile(filepath.Join(fakes, c), []byte("#!/bin/sh\necho fake "+c+"\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	list := strings.Join(pathCommands, " ")
+	probe := func(path, script string) []string {
+		cmd := exec.Command(sh, "-c", script)
+		cmd.Env = []string{"PATH=" + path}
+		b, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("%s: %s: %v", sh, script, err)
+		}
+		return strings.Fields(string(b))
+	}
+	ran := probe(fakes, `for c in `+list+`; do [ "$("$c" --help </dev/null 2>/dev/null)" = "fake $c" ] || echo "$c"; done`)
+	found := probe(empty, `for c in `+list+`; do ! command -v "$c" >/dev/null 2>&1 || echo "$c"; done`)
+	own := slices.Concat(ran, found)
+	slices.Sort(own)
+	own = slices.Compact(own)
+	for _, c := range own {
+		if !slices.Contains(pathCommands, c) {
+			t.Fatalf("%s: the probe printed %q, not a command", sh, c)
+		}
+	}
+	return own
+}
+
+// ownUname runs uname -s and uname -m in sh with an empty PATH.
 func ownUname(t *testing.T, sh string) string {
 	t.Helper()
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "uname"), []byte("#!/bin/sh\necho fake\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
 	cmd := exec.Command(sh, "-c", "uname -s; uname -m")
-	cmd.Env = []string{"PATH=" + dir}
+	cmd.Env = []string{"PATH=" + t.TempDir()}
 	b, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("%s: uname -s; uname -m: %v", sh, err)
 	}
 	out := string(b)
-	if out == "fake\nfake\n" {
-		return ""
-	}
 	if f := strings.Fields(out); len(f) != 2 || out != f[0]+"\n"+f[1]+"\n" {
-		t.Fatalf("%s: uname -s; uname -m printed %q, want the fake's output or a kernel and a machine", sh, out)
+		t.Fatalf("%s: uname -s; uname -m printed %q, want a kernel and a machine", sh, out)
 	}
 	return strings.Replace(strings.TrimSuffix(out, "\n"), "\n", " ", 1)
 }
@@ -133,14 +175,17 @@ func shells(t *testing.T, use fakeUse) []program {
 	t.Helper()
 	var all, out []program
 	for _, sh := range allShells(t) {
-		sh.ownUname = ownUname(t, sh.path)
+		sh.own = ownCommands(t, sh.path)
+		if slices.Contains(sh.own, "uname") {
+			sh.ownUname = ownUname(t, sh.path)
+		}
 		all = append(all, sh)
 		if sh.runs(use) {
 			out = append(out, sh)
 		}
 	}
 	if !slices.ContainsFunc(all, func(sh program) bool { return sh.runs(allFakes) }) {
-		t.Fatalf("every shell runs its own uname, not the fixture's: %v", all)
+		t.Fatalf("every shell runs some of its own commands, not the fixture's: %v", all)
 	}
 	return out
 }
@@ -246,11 +291,11 @@ func newInstall(t *testing.T) *installFix {
 	if err := os.Mkdir(f.tools, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"tar", "gzip", "mkdir", "mktemp", "rm", "chmod", "mv", "cp", "sleep"} {
+	for _, name := range installTools {
 		f.link(t, name, lookPath(t, name))
 	}
 	hashers := 0
-	for _, name := range []string{"sha256sum", "shasum"} {
+	for _, name := range installHashers {
 		if p, err := exec.LookPath(name); err == nil {
 			f.link(t, name, p)
 			hashers++
