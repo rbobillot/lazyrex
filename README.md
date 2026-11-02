@@ -18,6 +18,17 @@ flowchart LR
     tunnel --> remote[("Rex on remote-host")]
     sshexec -->|"exec mode: ssh remote-host rex ..."| remote
     lazyrex -.->|"ssh probes and tunnel: fixed argv, checked apart"| tunnel
+    classDef entry fill:#bfdbfe,stroke:#1d4ed8,color:#0f172a
+    classDef step fill:#e2e8f0,stroke:#475569,color:#0f172a
+    classDef decision fill:#fde68a,stroke:#b45309,color:#1c1917
+    classDef caution fill:#fed7aa,stroke:#c2410c,color:#1c1917
+    classDef success fill:#bbf7d0,stroke:#15803d,color:#052e16
+    classDef failure fill:#fecaca,stroke:#b91c1c,color:#450a0a
+    classDef rexside fill:#99f6e4,stroke:#0f766e,color:#042f2e
+    class you entry
+    class lazyrex,cli,sshexec,tunnel step
+    class policy decision
+    class localsrv,native,remote rexside
 ```
 
 ## Install

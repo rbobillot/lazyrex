@@ -34,6 +34,19 @@ flowchart TB
     allow --> again
     again -->|"no"| deny
     again -->|"yes"| run["▶️ rex runs, logged with send text and payloads redacted"]
+    classDef entry fill:#bfdbfe,stroke:#1d4ed8,color:#0f172a
+    classDef step fill:#e2e8f0,stroke:#475569,color:#0f172a
+    classDef decision fill:#fde68a,stroke:#b45309,color:#1c1917
+    classDef caution fill:#fed7aa,stroke:#c2410c,color:#1c1917
+    classDef success fill:#bbf7d0,stroke:#15803d,color:#052e16
+    classDef failure fill:#fecaca,stroke:#b91c1c,color:#450a0a
+    classDef rexside fill:#99f6e4,stroke:#0f766e,color:#042f2e
+    class cmd entry
+    class built,route,cli,named,self,kind,again decision
+    class classify step
+    class confirm caution
+    class allow,run success
+    class deny failure
 ```
 
 Names of API methods, `rex do` actions and client actions are split into words (on `.`, `_`, `-`, `/`, spaces and camelCase, so `checkForUpdates` holds `updates`) and classified:
@@ -51,6 +64,18 @@ flowchart LR
     destructive -->|"no"| known{"known safe?"}
     known -->|"yes"| ok
     known -->|"no"| ask
+    classDef entry fill:#bfdbfe,stroke:#1d4ed8,color:#0f172a
+    classDef step fill:#e2e8f0,stroke:#475569,color:#0f172a
+    classDef decision fill:#fde68a,stroke:#b45309,color:#1c1917
+    classDef caution fill:#fed7aa,stroke:#c2410c,color:#1c1917
+    classDef success fill:#bbf7d0,stroke:#15803d,color:#052e16
+    classDef failure fill:#fecaca,stroke:#b91c1c,color:#450a0a
+    classDef rexside fill:#99f6e4,stroke:#0f766e,color:#042f2e
+    class name entry
+    class reads,hostish,update,destructive,known decision
+    class ask caution
+    class ok success
+    class no failure
 ```
 
 The always-allowed reads are `hosts.list`, `server.status`, `server.version`, `server.whoami` and `server.apple.privacy_status`. The known safe names are `session.view`, `session.list`, `session.list_blocks`, `client.list`, `target.resolve`, `target.complete`, `session.new_split`, `session.new_window`, `session.new_block`, `session.resize_pane`, `session.float_block` and `session.select`. A name made only of `update` or `updates` and the words `status`, `available`, `info`, `get`, `list`, `show` or `version` (such as `updates.status`) is a read, not an update.

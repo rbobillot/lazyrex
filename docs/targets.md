@@ -23,6 +23,18 @@ flowchart TB
     rule -->|"label is the server of a config target of the same name"| merge["its details join that row"]
     rule -->|"label safe as -S, not local, name free"| row["a new native row"]
     rule -->|"otherwise"| hidden["hidden, with a line in the command log"]
+    classDef entry fill:#bfdbfe,stroke:#1d4ed8,color:#0f172a
+    classDef step fill:#e2e8f0,stroke:#475569,color:#0f172a
+    classDef decision fill:#fde68a,stroke:#b45309,color:#1c1917
+    classDef caution fill:#fed7aa,stroke:#c2410c,color:#1c1917
+    classDef success fill:#bbf7d0,stroke:#15803d,color:#052e16
+    classDef failure fill:#fecaca,stroke:#b91c1c,color:#450a0a
+    classDef rexside fill:#99f6e4,stroke:#0f766e,color:#042f2e
+    class local entry
+    class cfg,flag,hosts step
+    class rule decision
+    class merge,row success
+    class hidden caution
 ```
 
 The Targets panel lists, in order: the local server (renamed by a `kind: local` config entry), the `targets` of the config file, the `--server` target when it names none of them or the `--ssh` target when none has its `ssh_host`, then the hosts `rex hosts list --json` discovers on the home (local) server. A discovered host whose label is the server of a config target of the same name adds its details to that row. A host named `local`, one whose name is taken, and one whose label is unsafe as `-S` (empty, a leading `-`, outer whitespace, control characters, over 255 bytes) are hidden, with a line in the command log.

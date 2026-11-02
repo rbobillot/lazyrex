@@ -20,6 +20,18 @@ flowchart TB
     targets --> keys["apply the key overrides"]
     keys -->|"invalid"| fail
     keys --> run(["✅ the TUI starts"])
+    classDef entry fill:#bfdbfe,stroke:#1d4ed8,color:#0f172a
+    classDef step fill:#e2e8f0,stroke:#475569,color:#0f172a
+    classDef decision fill:#fde68a,stroke:#b45309,color:#1c1917
+    classDef caution fill:#fed7aa,stroke:#c2410c,color:#1c1917
+    classDef success fill:#bbf7d0,stroke:#15803d,color:#052e16
+    classDef failure fill:#fecaca,stroke:#b91c1c,color:#450a0a
+    classDef rexside fill:#99f6e4,stroke:#0f766e,color:#042f2e
+    class start entry
+    class given decision
+    class explicit,implicit,defaults,parse,targets,keys step
+    class fail failure
+    class run success
 ```
 
 The default path is `$XDG_CONFIG_HOME/lazyrex/config.yml`, else `~/.config/lazyrex/config.yml`. A missing default file means defaults; a missing `--config` file is an error. Copy [config.example.yml](../config.example.yml), which lists every key with its default, to start one.

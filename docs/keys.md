@@ -14,6 +14,15 @@ flowchart LR
     side -->|"?"| help["❓ keys of the panel, enter runs one"]
     side -->|"x"| menu["action menu of the panel"]
     side -->|":"| palette["command palette"]
+    classDef entry fill:#bfdbfe,stroke:#1d4ed8,color:#0f172a
+    classDef step fill:#e2e8f0,stroke:#475569,color:#0f172a
+    classDef decision fill:#fde68a,stroke:#b45309,color:#1c1917
+    classDef caution fill:#fed7aa,stroke:#c2410c,color:#1c1917
+    classDef success fill:#bbf7d0,stroke:#15803d,color:#052e16
+    classDef failure fill:#fecaca,stroke:#b91c1c,color:#450a0a
+    classDef rexside fill:#99f6e4,stroke:#0f766e,color:#042f2e
+    class side entry
+    class main,log,help,menu,palette step
 ```
 
 Keys of the **Every panel** table work everywhere, the command log included; `?` lists a panel's own keys first. The main view and the command log show the `x` menu of the side panel behind them.

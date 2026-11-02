@@ -40,6 +40,19 @@ flowchart TB
     fwdOK -->|"no"| posix{"POSIX login shell?"}
     posix -->|"yes"| exec["✅ exec mode: ssh remote-host rex ARGS"]
     posix -->|"no"| noExec["error: exec mode needs a POSIX login shell"]
+    classDef entry fill:#bfdbfe,stroke:#1d4ed8,color:#0f172a
+    classDef step fill:#e2e8f0,stroke:#475569,color:#0f172a
+    classDef decision fill:#fde68a,stroke:#b45309,color:#1c1917
+    classDef caution fill:#fed7aa,stroke:#c2410c,color:#1c1917
+    classDef success fill:#bbf7d0,stroke:#15803d,color:#052e16
+    classDef failure fill:#fecaca,stroke:#b91c1c,color:#450a0a
+    classDef rexside fill:#99f6e4,stroke:#0f766e,color:#042f2e
+    class start entry
+    class dir,haveRex,fwdOK,posix decision
+    class shell,findRex,who step
+    class stopped caution
+    class fwd,exec success
+    class noDir,sshDown,noRex,noExec failure
 ```
 
 **Probes**: once per target (and per `rex_path`), lazyrex reads the remote login shell (`echo "$SHELL"`) and, unless `rex_path` is set, looks for `rex` (`command -v rex`, else whichever of `/usr/local/bin/rex`, `/opt/homebrew/bin/rex`, the Rex.app binary and the Rex Beta.app one exists, preferred in that order). The Rex Beta.app path has spaces: it is single-quoted, one word for POSIX shells and fish. Results, failures included, are kept: polls do not probe again, and `c` on the row clears them and probes again. The probes and the tunnel are `ssh` commands lazyrex builds itself, not `rex` commands: they skip the safety policy and get no `rex` flags, and how they are checked is in [Safety](safety.md).
@@ -51,20 +64,28 @@ An SSH row that is not active is read the same way, with `whoami` and `server st
 ```mermaid
 sequenceDiagram
     autonumber
+    box rgba(59,130,246,0.15) local machine
     participant L as lazyrex
     participant S as ssh
+    end
+    box rgba(20,184,166,0.18) remote-host
     participant R as Rex on remote-host
+    end
     L->>S: ssh -- remote-host rex whoami --json
     S->>R: whoami
     R-->>L: endpoint unix:///path/to/rex.sock
     L->>S: ssh -N -L fwd-PID-N.sock:/path/to/rex.sock -- remote-host
     Note over L,S: the local socket lives in XDG_RUNTIME_DIR/lazyrex
+    rect rgba(34,197,94,0.15)
     loop every call and the event stream
         L->>R: rex -S unix://fwd-PID-N.sock ARGS, through the tunnel
     end
+    end
+    rect rgba(239,68,68,0.18)
     S--xL: the tunnel drops
     Note over L: commands refused, restart after 1s, doubling up to 30s
     L->>S: ssh -N again
+    end
 ```
 
 - After `whoami` over ssh gives the remote server's endpoint, an `ssh -N` tunnel forwards that Unix socket to `$XDG_RUNTIME_DIR/lazyrex/fwd-PID-N.sock`, and every call runs the local `rex -S unix://…` on it, except `server start`, which goes over exec.

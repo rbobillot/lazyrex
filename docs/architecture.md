@@ -13,6 +13,16 @@ flowchart TB
     gui --> gocui[("gocui")]
     config --> yaml[("yaml.v3")]
     rex --> procs["rex and ssh processes"]
+    classDef entry fill:#bfdbfe,stroke:#1d4ed8,color:#0f172a
+    classDef step fill:#e2e8f0,stroke:#475569,color:#0f172a
+    classDef decision fill:#fde68a,stroke:#b45309,color:#1c1917
+    classDef caution fill:#fed7aa,stroke:#c2410c,color:#1c1917
+    classDef success fill:#bbf7d0,stroke:#15803d,color:#052e16
+    classDef failure fill:#fecaca,stroke:#b91c1c,color:#450a0a
+    classDef rexside fill:#99f6e4,stroke:#0f766e,color:#042f2e
+    class main entry
+    class gui,rex,config,render,gocui,yaml step
+    class procs rexside
 ```
 
 | Package | Holds |
@@ -35,21 +45,31 @@ The active target is a **connection**: its client, a context cancelled when anot
 ```mermaid
 sequenceDiagram
     autonumber
+    box rgba(59,130,246,0.15) pkg/gui
     participant K as Key, form or palette
     participant C as gui.Controller
+    end
+    box rgba(100,116,139,0.15) pkg/rex
     participant P as rex.Client
     participant T as Transport
     participant R as Runner
+    end
     K->>C: Dispatch(panel, action)
     C->>P: Prepare(cmd)
+    rect rgba(245,158,11,0.18)
     P->>P: Decide: transport Check, then Policy.Check
     P->>T: RouteFor(cmd), CheckArgs
     P-->>C: Prepared: verdict, argv, redacted display
+    end
+    rect rgba(249,115,22,0.18)
     opt the verdict is confirm
         C->>K: confirmation popup with the display
     end
+    end
     C->>P: RunPrepared, on a worker
+    rect rgba(245,158,11,0.18)
     P->>P: same transport, decide again, same route generation and argv, then the guard
+    end
     P->>R: Run(argv): no local shell, no stdin, REX_CLIENT, REX_SESSION and REX_BLOCK removed
     R-->>P: stdout, stderr, exit code
     P-->>C: Outcome: exit kind, toast line, command log entry
@@ -85,6 +105,16 @@ flowchart LR
     tick --> cap["Capture tab, every capture_interval"]
     tick --> clients["Clients, every poll_interval"]
     tick --> hosts["hosts list, after hosts_changed"]
+    classDef entry fill:#bfdbfe,stroke:#1d4ed8,color:#0f172a
+    classDef step fill:#e2e8f0,stroke:#475569,color:#0f172a
+    classDef decision fill:#fde68a,stroke:#b45309,color:#1c1917
+    classDef caution fill:#fed7aa,stroke:#c2410c,color:#1c1917
+    classDef success fill:#bbf7d0,stroke:#15803d,color:#052e16
+    classDef failure fill:#fecaca,stroke:#b91c1c,color:#450a0a
+    classDef rexside fill:#99f6e4,stroke:#0f766e,color:#042f2e
+    class tick entry
+    class sup,ref,inspect,live,poll,cap,clients,hosts step
+    class stream rexside
 ```
 
 - Updates come from `rex events --all --json`. Events of one session are debounced and trigger at most one `session inspect` at a time, only when the revision is newer. lazyrex's own client events are ignored (every `rex` call emits `client_*` events).

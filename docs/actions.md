@@ -16,6 +16,19 @@ flowchart LR
     policy -->|"allowed"| run
     confirm --> run["checked again, then run"]
     run --> log["📜 command log, toast, refresh"]
+    classDef entry fill:#bfdbfe,stroke:#1d4ed8,color:#0f172a
+    classDef step fill:#e2e8f0,stroke:#475569,color:#0f172a
+    classDef decision fill:#fde68a,stroke:#b45309,color:#1c1917
+    classDef caution fill:#fed7aa,stroke:#c2410c,color:#1c1917
+    classDef success fill:#bbf7d0,stroke:#15803d,color:#052e16
+    classDef failure fill:#fecaca,stroke:#b91c1c,color:#450a0a
+    classDef rexside fill:#99f6e4,stroke:#0f766e,color:#042f2e
+    class start entry
+    class reads,policy decision
+    class fresh,form,log step
+    class confirm caution
+    class run success
+    class refused failure
 ```
 
 A refused command shows `refused: REASON` and a line in the command log. A form that read Rex first is cancelled with `the target changed; action cancelled` when you switched targets meanwhile. Rules: [Safety](safety.md).

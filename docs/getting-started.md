@@ -44,6 +44,16 @@ flowchart LR
     end
     side -->|"the selection drives"| main
     footer["Footer: key hints, toasts, target status"]
+    classDef entry fill:#bfdbfe,stroke:#1d4ed8,color:#0f172a
+    classDef step fill:#e2e8f0,stroke:#475569,color:#0f172a
+    classDef decision fill:#fde68a,stroke:#b45309,color:#1c1917
+    classDef caution fill:#fed7aa,stroke:#c2410c,color:#1c1917
+    classDef success fill:#bbf7d0,stroke:#15803d,color:#052e16
+    classDef failure fill:#fecaca,stroke:#b91c1c,color:#450a0a
+    classDef rexside fill:#99f6e4,stroke:#0f766e,color:#042f2e
+    class targets,sessions,windows,blocks,clients,main,log,footer step
+    style side fill:#bfdbfe,stroke:#1d4ed8,color:#0f172a
+    style right fill:#99f6e4,stroke:#0f766e,color:#042f2e
 ```
 
 - **[1] Targets**: the targets ([Targets](targets.md)), `*` on the active one, with its transport, status (`online`, `stopped`, `unreachable`, `unreachable (ssh)` when ssh itself failed, `online, api mismatch` when the server's `api_revision` is not 9, or `error`) and session count. Main tabs: **Status** (`whoami` and `server status`, discovered host details and `rex hosts check` results) and **Keymap & Actions** (`rex keymap --json` and `rex actions --json`, each action tagged `[allowed]`, `[confirm]` or `[denied]` by the safety layer; read only for the active target).
