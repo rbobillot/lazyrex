@@ -106,6 +106,10 @@ mise exec go@1.26 -- go build -o /tmp/lazyrex ./cmd/lazyrex
 
 Agents working here run Go through mise ([AGENTS.md](AGENTS.md)); with Go 1.26 in `PATH`, plain `go test ./...` works too. Tests never run the real `rex` except an opt-in, read-only smoke test. See [Development](docs/development.md).
 
+## Contributing
+
+Fork the repository and open a pull request against `main`: see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## License
 
 Apache-2.0, see [LICENSE](LICENSE).
