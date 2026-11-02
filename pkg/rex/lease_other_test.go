@@ -18,3 +18,5 @@ func leaseGrandchildren(t *testing.T) *lease {
 }
 
 func shareLease(*exec.Cmd) error { return errors.New("no lease off unix") }
+
+func holdLeaseLock() error { return errors.New("no lease off unix") }

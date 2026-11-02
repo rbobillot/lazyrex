@@ -16,7 +16,7 @@ func TestSSHStaleStatusKeepsTunnel(t *testing.T) {
 	const newerSock = "/run/user/1001/rex/other.sock"
 	for name, older := range map[string]string{
 		"other endpoint": rextest.FixtureString("whoami_remote.json"),
-		"unforwardable":  rextest.FixtureString("whoami_remote_space.json"),
+		"unforwardable":  rextest.FixtureString("whoami_remote_unforwardable.json"),
 	} {
 		t.Run(name, func(t *testing.T) {
 			fr := remoteRunner("/bin/bash")
@@ -46,7 +46,7 @@ func TestSSHStaleStatusKeepsTunnel(t *testing.T) {
 			rextest.Recv(t, done, "the older status read to return")
 
 			tunnels := fr.CallsContaining("-N")
-			if len(tunnels) != 1 || !slices.Contains(tunnels[0], fwdSock(1)+":"+newerSock) {
+			if len(tunnels) != 1 || !slices.Contains(tunnels[0], stableSock+":"+newerSock) {
 				t.Fatalf("tunnels = %q", tunnels)
 			}
 			if g := r.link.RouteGen(); g != gen {
@@ -91,7 +91,7 @@ func TestSSHExplicitExecNoFallback(t *testing.T) {
 	} {
 		t.Run(string(c.spec.Mode), func(t *testing.T) {
 			fr := remoteRunner("/bin/bash")
-			fr.On("'whoami'", "'--json'").Return(rextest.FixtureString("whoami_remote_space.json"), "", 0)
+			fr.On("'whoami'", "'--json'").Return(rextest.FixtureString("whoami_remote_unforwardable.json"), "", 0)
 			r := newLinkRig(t, fr, c.spec)
 			for range 2 {
 				if st := r.status(); st.State != rex.StateOnline {

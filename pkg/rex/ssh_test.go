@@ -2,11 +2,13 @@ package rex_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -22,6 +24,9 @@ const (
 	remoteSock    = "/run/user/1001/rex/server.sock"
 	sshSession    = rex.SessionID("session:01aaaa")
 	sshBlock      = rex.BlockID("block:01b9")
+	// stableSock is the v1 stable socket of target remote-host, ssh_host
+	// remote-host, pinned in TestStableSocketGolden.
+	stableSock = runDir + "/gui-remote-host_996d7034ffff31a3.sock"
 )
 
 func fwdSock(n int) string { return fmt.Sprintf("%s/fwd-42-%d.sock", runDir, n) }
@@ -361,10 +366,19 @@ func TestTunnelArgv(t *testing.T) {
 	r.online()
 	tunnels := r.fr.CallsContaining("-N")
 	want := []string{"ssh", "-N", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "-o", "ExitOnForwardFailure=yes",
-		"-o", "StreamLocalBindUnlink=yes", "-o", "ControlMaster=no", "-o", "ControlPath=none", "-o", "ServerAliveInterval=15",
-		"-o", "ServerAliveCountMax=3", "-L", fwdSock(1) + ":" + remoteSock, "--", "remote-host"}
+		"-o", "ControlMaster=no", "-o", "ControlPath=none", "-o", "ServerAliveInterval=15",
+		"-o", "ServerAliveCountMax=3", "-L", stableSock + ":" + remoteSock, "--", "remote-host"}
 	if len(tunnels) != 1 || !slices.Equal(tunnels[0], want) {
 		t.Fatalf("tunnels\n got %q\nwant %q", tunnels, want)
+	}
+	if route, _, err := r.link.RouteFor(cmds.Ls()); err != nil || route.(rex.SSHForward).Socket != stableSock {
+		t.Fatalf("route = %#v, %v", route, err)
+	}
+	if got := r.sockets.Events(); !slices.Equal(got[:2], []string{"claim:" + stableSock, "prepare:" + stableSock}) {
+		t.Fatalf("events = %q", got)
+	}
+	if ep := r.link.GUIEndpoint(); ep != (rex.GUIEndpoint{State: rex.GUIForwarded, URI: "unix://" + stableSock}) {
+		t.Fatalf("gui endpoint = %+v", ep)
 	}
 }
 
@@ -405,7 +419,7 @@ func TestSSHServerStartRoute(t *testing.T) {
 	if _, err := c.Exec(r.ctx, cmds.Ls(), false); err != nil {
 		t.Fatal(err)
 	}
-	want = split("rex --autostart=false --timeout=10s -S unix://" + fwdSock(1) + " ls --json")
+	want = split("rex --autostart=false --timeout=10s -S unix://" + stableSock + " ls --json")
 	if n := countArgv(r.fr, want); n != 1 {
 		t.Fatalf("ls argv %q ran %d times; calls:\n%s", want, n, dumpCalls(r.fr))
 	}
@@ -427,10 +441,19 @@ func TestCheckSSHHost(t *testing.T) {
 
 const macosEndpoint = "unix:///Users/user/Library/Application%20Support/rex/server.sock"
 
-// TestNormalizeEndpoint (1h): the path is percent-decoded, then checked.
+// TestNormalizeEndpoint (1h, C1 to C4): the path is percent-decoded, then
+// checked. ssh's -L keeps a space and drops a backslash.
 func TestNormalizeEndpoint(t *testing.T) {
+	var raw struct{ Endpoint string }
+	if err := json.Unmarshal(rextest.Fixture("whoami_remote_space.json"), &raw); err != nil {
+		t.Fatal(err)
+	}
 	for in, want := range map[string]string{
-		"unix:///run/user/1000/rex/server.sock":          "/run/user/1000/rex/server.sock",
+		macosEndpoint:                           "/Users/user/Library/Application Support/rex/server.sock",
+		"unix:///a%20b":                         "/a b",
+		"unix:///a b":                           "/a b",
+		raw.Endpoint:                            "/Users/user/Library/Application Support/Rex/server.sock",
+		"unix:///run/user/1000/rex/server.sock": "/run/user/1000/rex/server.sock",
 		"unix:///run/user/1000/rex%2Bx/server.sock":      "/run/user/1000/rex+x/server.sock",
 		"unix:///run/user/1000/rex+x/server.sock":        "/run/user/1000/rex+x/server.sock",
 		"unix:///ru%6e/x":                                "/run/x",
@@ -446,8 +469,11 @@ func TestNormalizeEndpoint(t *testing.T) {
 		}
 	}
 	for _, tc := range []struct{ in, errPart string }{
-		{macosEndpoint, "whitespace"},
-		{"unix:///a%20b", "whitespace"},
+		{"unix:///a%5Cb", `'\'`},
+		{`unix:///a\b`, `'\'`},
+		{"unix:///a%C2%A0b", "whitespace other than a space"},
+		{"unix:///a%E2%80%A8b", "whitespace other than a space"},
+		{"unix:///a%09b", "whitespace other than a space"},
 		{"unix:///a%C", "malformed"},
 		{"unix:///a%2", "malformed"},
 		{"unix:///a%zz", "malformed"},
@@ -470,7 +496,7 @@ func TestNormalizeEndpoint(t *testing.T) {
 			t.Errorf("NormalizeEndpoint(%q) = %q, %v, want an error with %q", tc.in, got, err, tc.errPart)
 		}
 	}
-	for _, bad := range []string{"http://h:7297", "unix://rel/x", "unix:rel", "/abs", "unix:///a:b", "unix:///a b", "unix:///a\nb",
+	for _, bad := range []string{"http://h:7297", "unix://rel/x", "unix:rel", "/abs", "unix:///a:b", "unix:///a\nb",
 		"unix:///a\x1b", "UNIX:///x", "unix://", "unix:///", "unix:///\xff", "unix:///" + strings.Repeat("a", 104)} {
 		if got, err := rex.NormalizeEndpoint(bad); err == nil {
 			t.Errorf("NormalizeEndpoint(%q) = %q, want an error", bad, got)
@@ -480,6 +506,47 @@ func TestNormalizeEndpoint(t *testing.T) {
 		if _, err := rex.NormalizeEndpoint(huge); err == nil || len(err.Error()) >= 200 {
 			t.Errorf("NormalizeEndpoint(%d bytes) = %v, want a short error", len(huge), err)
 		}
+	}
+}
+
+// TestSocketURI (C8): the URI the Rex app is given decodes back to the
+// socket path.
+func TestSocketURI(t *testing.T) {
+	for p, want := range map[string]string{
+		stableSock:      "unix://" + stableSock,
+		"/x?y#z/s.sock": "unix:///x%3Fy%23z/s.sock",
+		"/a b/s.sock":   "unix:///a%20b/s.sock",
+	} {
+		got := rex.SocketURI(p)
+		if got != want {
+			t.Errorf("SocketURI(%q) = %q, want %q", p, got, want)
+		}
+		if back, err := rex.NormalizeEndpoint(got); err != nil || back != p {
+			t.Errorf("NormalizeEndpoint(%q) = %q, %v, want %q", got, back, err, p)
+		}
+	}
+}
+
+// TestHostsAddHint (C9, C23): the command shown for the Rex app splits into
+// the five words it names, and lazyrex itself still refuses to run it.
+func TestHostsAddHint(t *testing.T) {
+	c, fr := policyClient(t, rex.Local{})
+	for _, tc := range []struct{ label, uri, want string }{
+		{"edge", "unix:///run/x.sock", "rex hosts add edge unix:///run/x.sock"},
+		{"my box", "unix:///run/x.sock", "rex hosts add 'my box' unix:///run/x.sock"},
+		{"it's", "unix:///run/x.sock", `rex hosts add 'it'\''s' unix:///run/x.sock`},
+		{"edge", "unix:///x%3Fy.sock", "rex hosts add edge 'unix:///x%3Fy.sock'"},
+	} {
+		got := rex.HostsAddHint(tc.label, tc.uri)
+		if got != tc.want {
+			t.Errorf("HostsAddHint(%q, %q) = %q, want %q", tc.label, tc.uri, got, tc.want)
+		}
+		words, err := shellSplit(got)
+		if err != nil || !slices.Equal(words, []string{"rex", "hosts", "add", tc.label, tc.uri}) {
+			t.Errorf("words of %q = %q, %v", got, words, err)
+			continue
+		}
+		assertDenied(t, c, fr, cmds.Raw(words[1:]...), got)
 	}
 }
 
@@ -682,7 +749,7 @@ func TestTunnelRestartBackoff(t *testing.T) {
 	if st := r.status(); st.State != rex.StateOnline {
 		t.Fatalf("after start 3: %v %q", st.State, st.Detail)
 	}
-	if got := sockets.Prepared(); !slices.Equal(got, []string{fwdSock(1), fwdSock(1), fwdSock(1)}) {
+	if got := sockets.Prepared(); !slices.Equal(got, []string{stableSock, stableSock, stableSock}) {
 		t.Fatalf("prepared = %q", got)
 	}
 	if got := sockets.Cleaned(); len(got) != 2 {
@@ -714,8 +781,11 @@ func TestTunnelKilledOnCancel(t *testing.T) {
 	if !r.group.Wait(rextest.Timeout) {
 		t.Fatal("tunnel goroutine still running")
 	}
-	if got := sockets.Cleaned(); !slices.Equal(got, []string{fwdSock(1)}) {
+	if got := sockets.Cleaned(); !slices.Equal(got, []string{stableSock}) {
 		t.Fatalf("cleaned = %q", got)
+	}
+	if got := sockets.Events(); got[len(got)-1] != "release:"+stableSock {
+		t.Fatalf("events = %q, want the release after the cleanup", got)
 	}
 	if n := len(fr.CallsContaining("-N")); n != 1 {
 		t.Fatalf("%d tunnels started", n)
@@ -727,12 +797,14 @@ func remoteWhoami(endpoint string) string {
 	return strings.Replace(rextest.FixtureString("whoami_remote.json"), "unix://"+remoteSock, endpoint, 1)
 }
 
-// TestStaleLoopIgnored (7d): an old loop finishing late changes nothing.
+// TestStaleLoopIgnored (7d, C11): on an endpoint change, the new loop takes
+// the stable socket only once the old loop has cleaned it up, and the old
+// loop finishing changes nothing else.
 func TestStaleLoopIgnored(t *testing.T) {
 	fr := remoteRunner("/bin/bash")
 	gate := make(chan struct{})
 	sockets := &rextest.FakeSockets{}
-	sockets.GateCleanup(t, fwdSock(1), gate)
+	sockets.GateCleanup(t, stableSock, gate)
 	r := newLinkRig(t, fr, forward, withSockets(sockets))
 	r.online()
 
@@ -741,25 +813,237 @@ func TestStaleLoopIgnored(t *testing.T) {
 	if st := r.status(); st.State != rex.StateUnreachable {
 		t.Fatalf("status = %v %q", st.State, st.Detail)
 	}
-	r.waitTunnel(true)
-	gen := r.link.RouteGen()
-	close(gate)
-	waitFor(t, "loop 1 cleanup", func() bool { return slices.Contains(sockets.Cleaned(), fwdSock(1)) })
 	time.Sleep(20 * time.Millisecond)
-	if g := r.link.RouteGen(); g != gen {
-		t.Fatalf("route generation %d -> %d after the old loop ended", gen, g)
+	if n := len(fr.CallsContaining("-N")); n != 1 {
+		t.Fatalf("%d tunnels while the old cleanup is held:\n%s", n, dumpCalls(fr))
 	}
 	r.noTunnelChange()
+	close(gate)
+	r.waitTunnel(true)
 	if d := r.link.Describe(); !strings.Contains(d, "tunnel up") {
 		t.Fatalf("describe = %q", d)
 	}
 	route, _, err := r.link.RouteFor(cmds.Ls())
-	if fwd, ok := route.(rex.SSHForward); err != nil || !ok || fwd.Socket != fwdSock(2) {
+	if fwd, ok := route.(rex.SSHForward); err != nil || !ok || fwd.Socket != stableSock {
 		t.Fatalf("route = %#v, %v", route, err)
 	}
 	tunnels := fr.CallsContaining("-N")
-	if len(tunnels) != 2 || !slices.Contains(tunnels[1], fwdSock(2)+":/run/user/1001/rex2/server.sock") {
+	if len(tunnels) != 2 || !slices.Contains(tunnels[1], stableSock+":/run/user/1001/rex2/server.sock") {
 		t.Fatalf("tunnels = %q", tunnels)
+	}
+	ev := sockets.Events()
+	cleanup, second := slices.Index(ev, "cleanup:"+stableSock), indexNth(ev, "prepare:"+stableSock, 2)
+	if cleanup < 0 || second < 0 || cleanup > second {
+		t.Fatalf("events = %q, want the old cleanup before the second prepare", ev)
+	}
+	r.noTunnelChange()
+}
+
+// indexNth returns the index of the nth (from 1) s in list, or -1.
+func indexNth(list []string, s string, n int) int {
+	for i, v := range list {
+		if v == s {
+			if n--; n == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// TestClaimWaitCancelled (C13): a loop waiting for the stable socket of an
+// earlier loop ends with its context, starting no tunnel.
+func TestClaimWaitCancelled(t *testing.T) {
+	fr := remoteRunner("/bin/bash")
+	gate := make(chan struct{})
+	sockets := &rextest.FakeSockets{}
+	sockets.GateCleanup(t, stableSock, gate)
+	r := newLinkRig(t, fr, forward, withSockets(sockets))
+	r.online()
+	r.cancel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	group := &rex.TunnelGroup{}
+	link := rex.NewSSHLink(ctx, rex.LinkOptions{Base: r.base, Name: "remote-host", Spec: forward, Env: r.env, Clock: r.clk, Group: group})
+	link.Status(ctx, nil)
+	time.Sleep(20 * time.Millisecond)
+	cancel()
+	group.Stop()
+	if !group.Wait(rextest.Timeout) {
+		t.Fatal("the waiting loop did not end with its context")
+	}
+	if n := len(fr.CallsContaining("-N")); n != 1 {
+		t.Fatalf("%d tunnels:\n%s", n, dumpCalls(fr))
+	}
+	if n := countEvents(sockets, "claim:"+stableSock); n != 1 {
+		t.Fatalf("events = %q", sockets.Events())
+	}
+	close(gate)
+}
+
+func countEvents(s *rextest.FakeSockets, e string) int {
+	n := 0
+	for _, v := range s.Events() {
+		if v == e {
+			n++
+		}
+	}
+	return n
+}
+
+// TestStableSocketFallbacks (C14): a stable socket held by another lazyrex,
+// or a claim failing, leaves this link on a private socket.
+func TestStableSocketFallbacks(t *testing.T) {
+	for name, tc := range map[string]struct {
+		sockets *rextest.FakeSockets
+		want    rex.GUIEndpoint
+	}{
+		"held": {&rextest.FakeSockets{Held: func(p string) bool { return p == stableSock }},
+			rex.GUIEndpoint{State: rex.GUIElsewhere, URI: "unix://" + stableSock}},
+		"claim error": {&rextest.FakeSockets{ClaimErr: errors.New("x")},
+			rex.GUIEndpoint{State: rex.GUIUnavailable, Why: "x"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			fr := remoteRunner("/bin/bash")
+			r := newLinkRig(t, fr, forward, withSockets(tc.sockets))
+			r.online()
+			tunnels := fr.CallsContaining("-N")
+			if len(tunnels) != 1 || !slices.Contains(tunnels[0], fwdSock(1)+":"+remoteSock) {
+				t.Fatalf("tunnels = %q", tunnels)
+			}
+			if route, _, err := r.link.RouteFor(cmds.Ls()); err != nil || route.(rex.SSHForward).Socket != fwdSock(1) {
+				t.Fatalf("route = %#v, %v", route, err)
+			}
+			if ep := r.link.GUIEndpoint(); ep != tc.want {
+				t.Fatalf("gui endpoint = %+v, want %+v", ep, tc.want)
+			}
+			if got := tc.sockets.Prepared(); slices.Contains(got, stableSock) {
+				t.Fatalf("prepared = %q", got)
+			}
+		})
+	}
+}
+
+// TestLiveStableSocketFallback (C15): a live socket at the stable path moves
+// the link to a private socket at once, releasing the claim first, whether
+// it is there from the start or appears after the tunnel failed to bind.
+func TestLiveStableSocketFallback(t *testing.T) {
+	t.Run("at once", func(t *testing.T) {
+		fr := remoteRunner("/bin/bash")
+		sockets := &rextest.FakeSockets{PrepareFunc: func(p string) error {
+			if p == stableSock {
+				return rex.ErrLiveSocket
+			}
+			return nil
+		}}
+		r := newLinkRig(t, fr, forward, withSockets(sockets))
+		r.online()
+		checkLiveFallback(t, r, sockets)
+		if w := r.clk.Waits(); len(w) != 0 {
+			t.Fatalf("backoff waits %v before the private socket", w)
+		}
+	})
+	t.Run("after a bind failure", func(t *testing.T) {
+		fr := remoteRunner("/bin/bash")
+		fr.OnStream("-N").Exit(255, "unix_listener: cannot bind to path "+stableSock+": Address already in use\n")
+		var prepares atomic.Int32
+		sockets := &rextest.FakeSockets{
+			Ready: func(n int) bool { return n >= 2 },
+			PrepareFunc: func(p string) error {
+				if p == stableSock && prepares.Add(1) >= 2 {
+					return rex.ErrLiveSocket
+				}
+				return nil
+			}}
+		r := newLinkRig(t, fr, forward, withSockets(sockets))
+		r.status()
+		r.waitTunnel(false)
+		r.clk.BlockUntilWaiters(1)
+		r.clk.Advance(time.Second)
+		r.waitTunnel(true)
+		checkLiveFallback(t, r, sockets)
+		if w := r.clk.Waits(); !slices.Equal(w, []time.Duration{time.Second}) {
+			t.Fatalf("backoff waits %v, want only the one after the bind failure", w)
+		}
+	})
+}
+
+func checkLiveFallback(t *testing.T, r *linkRig, sockets *rextest.FakeSockets) {
+	t.Helper()
+	if route, _, err := r.link.RouteFor(cmds.Ls()); err != nil || route.(rex.SSHForward).Socket != fwdSock(1) {
+		t.Fatalf("route = %#v, %v", route, err)
+	}
+	if ep := r.link.GUIEndpoint(); ep != (rex.GUIEndpoint{State: rex.GUIElsewhere, URI: "unix://" + stableSock}) {
+		t.Fatalf("gui endpoint = %+v", ep)
+	}
+	ev := sockets.Events()
+	release, private := slices.Index(ev, "release:"+stableSock), slices.Index(ev, "prepare:"+fwdSock(1))
+	if release < 0 || private < 0 || release > private {
+		t.Fatalf("events = %q, want the release before the private prepare", ev)
+	}
+	if last := r.fr.CallsContaining("-N"); !slices.Contains(last[len(last)-1], fwdSock(1)+":"+remoteSock) {
+		t.Fatalf("tunnels = %q", last)
+	}
+}
+
+// TestGUIEndpointStates (C16): the endpoint follows the tunnel, claimed once
+// per loop; exec mode, configured or as a fallback, claims nothing.
+func TestGUIEndpointStates(t *testing.T) {
+	fr := remoteRunner("/bin/bash")
+	drop := make(chan struct{})
+	fr.OnStream("-N").Exit(255, "ssh: connect to host remote-host port 22: Connection refused\n")
+	fr.OnStream("-N").Until(drop).Exit(255, "client_loop: send disconnect: Broken pipe\n")
+	sockets := &rextest.FakeSockets{Ready: func(n int) bool { return n >= 2 }}
+	r := newLinkRig(t, fr, forward, withSockets(sockets))
+	r.status()
+	r.waitTunnel(false)
+	if ep := r.link.GUIEndpoint(); ep != (rex.GUIEndpoint{State: rex.GUIDown, URI: "unix://" + stableSock}) {
+		t.Fatalf("after exit 1: %+v", ep)
+	}
+	r.clk.BlockUntilWaiters(1)
+	r.clk.Advance(time.Second)
+	r.waitTunnel(true)
+	if ep := r.link.GUIEndpoint(); ep != (rex.GUIEndpoint{State: rex.GUIForwarded, URI: "unix://" + stableSock}) {
+		t.Fatalf("after start 2: %+v", ep)
+	}
+	close(drop)
+	r.waitTunnel(false)
+	r.clk.BlockUntilWaiters(2)
+	if ep := r.link.GUIEndpoint(); ep.State != rex.GUIDown {
+		t.Fatalf("after exit 2: %+v", ep)
+	}
+	if c, p := countEvents(sockets, "claim:"+stableSock), countEvents(sockets, "prepare:"+stableSock); c != 1 || p != 2 {
+		t.Fatalf("%d claims, %d prepares: %q", c, p, sockets.Events())
+	}
+
+	for name, tc := range map[string]struct {
+		spec    rex.SSHSpec
+		fixture string
+		state   rex.GUIState
+		why     string
+	}{
+		"exec":          {execOnly, "whoami_remote.json", rex.GUIExecMode, ""},
+		"unforwardable": {forward, "whoami_remote_unforwardable.json", rex.GUIUnforwardable, "'%'"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			fr := remoteRunner("/bin/bash")
+			fr.On("'whoami'", "'--json'").Return(rextest.FixtureString(tc.fixture), "", 0)
+			sockets := &rextest.FakeSockets{}
+			r := newLinkRig(t, fr, tc.spec, withSockets(sockets))
+			if ep := r.link.GUIEndpoint(); ep != (rex.GUIEndpoint{}) {
+				t.Fatalf("before the first status: %+v", ep)
+			}
+			if st := r.status(); st.State != rex.StateOnline {
+				t.Fatalf("status = %v %q", st.State, st.Detail)
+			}
+			ep := r.link.GUIEndpoint()
+			if ep.State != tc.state || ep.URI != "" || !strings.Contains(ep.Why, tc.why) || (tc.why == "") != (ep.Why == "") {
+				t.Fatalf("gui endpoint = %+v", ep)
+			}
+			if ev := sockets.Events(); len(ev) != 0 {
+				t.Fatalf("events = %q", ev)
+			}
+		})
 	}
 }
 
@@ -1155,7 +1439,7 @@ func TestSSHStatusGeneration(t *testing.T) {
 // exec mode, logged once, with no tunnel.
 func TestSSHFallbackToExec(t *testing.T) {
 	fr := remoteRunner("/bin/bash")
-	fr.On("'whoami'", "'--json'").Return(rextest.FixtureString("whoami_remote_space.json"), "", 0)
+	fr.On("'whoami'", "'--json'").Return(rextest.FixtureString("whoami_remote_unforwardable.json"), "", 0)
 	r := newLinkRig(t, fr, forward)
 	for range 2 {
 		if st := r.status(); st.State != rex.StateOnline {
@@ -1182,33 +1466,25 @@ func TestSSHFallbackToExec(t *testing.T) {
 	}
 }
 
-// TestSSHMacOSRexBeta: on a macOS server with only Rex Beta, the probe finds
-// its CLI, and the percent-encoded endpoint decodes to a path with a space,
-// so the target uses exec mode with that CLI, no tunnel.
+// TestSSHMacOSRexBeta (C25): on a macOS server with only Rex Beta, the probe
+// finds its CLI, and the percent-encoded endpoint decodes to a path with a
+// space, which -L keeps: the target uses forward mode, with that CLI for
+// exec calls and server start.
 func TestSSHMacOSRexBeta(t *testing.T) {
 	fr := remoteRunner("/bin/zsh")
 	fr.On(pathProbeCmd).Return(rextest.FixtureString("rex_path_probe_beta.txt"), "ls: /usr/local/bin/rex: No such file or directory\n", 1)
 	fr.On("'whoami'", "'--json'").Return(rextest.FixtureString("whoami_remote_macos.json"), "", 0)
 	r := newLinkRig(t, fr, forward)
-	for range 2 {
-		if st := r.status(); st.State != rex.StateOnline {
-			t.Fatalf("status = %v %q; calls:\n%s", st.State, st.Detail, dumpCalls(fr))
-		}
-	}
-	if d := r.link.Describe(); d != "ssh remote-host, exec mode (endpoint cannot be forwarded)" {
+	r.online()
+	if d := r.link.Describe(); d != "ssh remote-host, forward mode, tunnel up" {
 		t.Fatalf("describe = %q", d)
 	}
-	notes := 0
-	for _, e := range r.log.all() {
-		if strings.HasPrefix(e.Note, "remote-host: ") && strings.Contains(e.Note, "Application Support") && strings.Contains(e.Note, "whitespace") {
-			notes++
-		}
+	if strings.Contains(r.log.text(), "cannot be forwarded") {
+		t.Fatalf("fell back:\n%s", r.log.text())
 	}
-	if notes != 1 {
-		t.Fatalf("%d fallback notes:\n%s", notes, r.log.text())
-	}
-	if n := len(fr.CallsContaining("-N")); n != 0 {
-		t.Fatalf("tunnel started:\n%s", dumpCalls(fr))
+	tunnels := fr.CallsContaining("-N")
+	if len(tunnels) != 1 || !slices.Contains(tunnels[0], stableSock+":/Users/user/Library/Application Support/rex/server.sock") {
+		t.Fatalf("tunnels = %q", tunnels)
 	}
 	execCalls := fr.CallsContaining("'--autostart=false'")
 	if len(execCalls) == 0 {
@@ -1219,10 +1495,13 @@ func TestSSHMacOSRexBeta(t *testing.T) {
 			t.Fatalf("rex path %q in %q", w[0], c)
 		}
 	}
-	status := fr.CallsContaining("'server'", "'status'")
-	want := rex.Local{}.Argv(betaRex, []string{"--autostart=false", "--timeout=10s"}, []string{"server", "status", "--json"})
-	if len(status) == 0 || !slices.Equal(remoteWords(t, status[0]), want) {
-		t.Fatalf("server status calls %q, want remote words %q", status, want)
+	if _, err := r.client().Exec(r.ctx, cmds.ServerStart(), true); err != nil {
+		t.Fatal(err)
+	}
+	start := fr.CallsContaining("'server'", "'start'")
+	want := rex.Local{}.Argv(betaRex, []string{"--timeout=10s"}, []string{"server", "start", "--json"})
+	if len(start) != 1 || !slices.Equal(remoteWords(t, start[0]), want) {
+		t.Fatalf("server start calls %q, want remote words %q", start, want)
 	}
 }
 
@@ -1231,9 +1510,9 @@ func TestSSHForwardFailureStaysForward(t *testing.T) {
 	fr := remoteRunner("/bin/bash")
 	r := newLinkRig(t, fr, forward)
 	r.online()
-	fr.On("whoami", "--json").Return("", "Error: dial unix "+fwdSock(1)+": connection refused\n", 4)
+	fr.On("whoami", "--json").Return("", "Error: dial unix "+stableSock+": connection refused\n", 4)
 	st := r.status()
-	if st.State != rex.StateUnreachable || st.Detail != "Error: dial unix "+fwdSock(1)+": connection refused" {
+	if st.State != rex.StateUnreachable || st.Detail != "Error: dial unix "+stableSock+": connection refused" {
 		t.Fatalf("status = %v %q", st.State, st.Detail)
 	}
 	if d := r.link.Describe(); d != "ssh remote-host, forward mode, tunnel up" {
