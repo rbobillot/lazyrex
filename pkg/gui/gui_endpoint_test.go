@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/rbobillot/lazyrex/pkg/rex"
+	"github.com/rbobillot/lazyrex/pkg/rexhosts"
 )
 
 // fakeGUILink is an SSH transport whose Rex app endpoint is fixed.
@@ -18,14 +19,20 @@ func (fakeGUILink) Describe() string                      { return "ssh edge, fo
 func (fakeGUILink) Host() string                          { return "edge" }
 func (f fakeGUILink) GUIEndpoint() rex.GUIEndpoint        { return f.ep }
 
-// TestRenderGUIEndpoint (C22): one Status block per endpoint state, the
-// command alone on its line and the hint only where there is an endpoint.
+// TestRenderGUIEndpoint (C22, amended by H31): one Status block per endpoint
+// state, and the Rex app host block only where there is an endpoint.
 func TestRenderGUIEndpoint(t *testing.T) {
 	const uri = "unix:///run/user/1000/lazyrex/gui-edge_ce63845b8c961e37.sock"
-	hint := "\nRex app: add a host with this endpoint, or run once (lazyrex never runs it):\n" +
-		"rex hosts add edge " + uri + "\n" +
-		"It works while lazyrex runs with edge active. Rex has no transport auth: only your user can open this socket.\n" +
-		"Rex syncs hosts to your other devices, where this path reaches nothing unless lazyrex forwards it there.\n"
+	const dir = "/home/u/.config/rex"
+	hint := "\nRex app host edge-lazyrex in " + dir + "/lazyrex-hosts.lua: not written yet\n" +
+		"w (Targets) writes it, then reloads the local Rex server, each after a confirmation.\n" +
+		"It works while lazyrex runs with edge active. Rex has no transport auth: only your user can open this socket.\n"
+	view := RexHostsView{
+		Ready:   true,
+		Paths:   rexhosts.Paths{Dir: dir, Hosts: dir + "/lazyrex-hosts.lua", Init: dir + "/init.lua"},
+		File:    rexhosts.Absent,
+		Entries: map[string]rex.HostEntry{"edge": {Target: "edge", Label: "edge-lazyrex", Endpoint: uri}},
+	}
 	for _, tc := range []struct {
 		ep   rex.GUIEndpoint
 		want string
@@ -44,6 +51,7 @@ func TestRenderGUIEndpoint(t *testing.T) {
 		st := NewState()
 		st.TargetName = "edge"
 		st.Transport = fakeGUILink{ep: tc.ep}
+		st.RexHosts = view
 		out := RenderStatus(st)
 		// The block sits between the blank line after the state and the
 		// event stream line, followed by a blank line of its own.
@@ -56,7 +64,10 @@ func TestRenderGUIEndpoint(t *testing.T) {
 		if !ok || !found || block != want {
 			t.Errorf("state %v: block before the event stream\n got %q\nwant %q\nstatus tab:\n%s", tc.ep.State, block, want, out)
 		}
-		hasHint := strings.Contains(out, "rex hosts add")
+		if strings.Contains(out, "rex hosts add") {
+			t.Errorf("state %v: still shows rex hosts add:\n%s", tc.ep.State, out)
+		}
+		hasHint := strings.Contains(out, "Rex app host edge-lazyrex")
 		if want := tc.ep.State == rex.GUIForwarded || tc.ep.State == rex.GUIDown || tc.ep.State == rex.GUIElsewhere; hasHint != want {
 			t.Errorf("state %v: hint shown %v, want %v", tc.ep.State, hasHint, want)
 		}

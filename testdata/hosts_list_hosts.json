@@ -2,7 +2,7 @@
   "home": {"label": "", "endpoint": "unix:///run/user/1000/rex/server.sock", "this_machine": true, "reached": true},
   "hosts": [
     {"id": "host:01", "label": "studio", "endpoints": ["tcp://192.168.1.20:7297", {"kind": "tailscale", "addr": "studio.tail1234.ts.net:7297"}], "host_id": "hid:01", "added_from": "laptop", "source": "stored", "updated_at": "2026-01-01T07:00:00Z", "zz_future": true},
-    {"id": "host:02", "label": "attic", "endpoints": ["tcp://10.0.0.5:7297"], "added_from": "init.lua:4", "source": "config"},
+    {"id": "host:02", "label": "attic", "endpoints": ["tcp://10.0.0.5:7297"], "added_from": "mac-mini", "source": "init.lua:4"},
     {"id": "host:03", "label": "Studio Mac", "endpoints": ["tcp://192.168.1.21:7297"], "source": "stored"},
     {"id": "host:04", "label": "STUDIO", "endpoints": [], "source": "stored"},
     {"id": "host:05", "label": "-oProxyCommand=x", "endpoints": [], "source": "stored"},

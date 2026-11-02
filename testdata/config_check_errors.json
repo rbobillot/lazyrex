@@ -1,0 +1,20 @@
+{
+  "path": "/tmp/c2.lua",
+  "exists": true,
+  "bindings": 0,
+  "removals": 0,
+  "modes": 0,
+  "actions": [],
+  "diagnostics": [
+    {
+      "severity": "warning",
+      "source": "c2.lua:1",
+      "message": "rex.host: member \"label\" must be a string, got number, so this host is ignored"
+    },
+    {
+      "severity": "error",
+      "source": "c2.lua:2",
+      "message": "boom"
+    }
+  ]
+}

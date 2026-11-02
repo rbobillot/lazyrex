@@ -251,7 +251,7 @@ func TestParseHosts(t *testing.T) {
 		!strings.Contains(string(studio.Endpoints[1]), "tailscale") {
 		t.Fatalf("studio = %+v", studio)
 	}
-	if v.Hosts[1].AddedFrom != "init.lua:4" {
+	if v.Hosts[1].AddedFrom != "mac-mini" {
 		t.Fatalf("attic = %+v", v.Hosts[1])
 	}
 	nulls := v.Hosts[8]

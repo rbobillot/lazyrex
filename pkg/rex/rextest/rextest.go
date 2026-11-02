@@ -16,6 +16,25 @@ import (
 	"github.com/rbobillot/lazyrex/pkg/rex"
 )
 
+// PrivateDir returns a new directory under /tmp, symlinks resolved and mode
+// 0700, removed at the end of t. It stays short, so socket paths in it fit
+// the 104-byte limit.
+func PrivateDir(t testing.TB) string {
+	t.Helper()
+	d, err := os.MkdirTemp("/tmp", "lzr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(d) })
+	if d, err = filepath.EvalSymlinks(d); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(d, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
+
 // Fixture reads testdata/<name> from the repository root.
 func Fixture(name string) []byte {
 	_, file, _, ok := runtime.Caller(0)
@@ -92,8 +111,11 @@ func (s *FakeStream) Until(ch <-chan struct{}) *FakeStream {
 // recently registered matching response wins. Unmatched Run calls exit 2.
 // Unmatched Stream calls stay open until their context ends.
 type FakeRunner struct {
-	mu         sync.Mutex
-	calls      [][]string
+	mu    sync.Mutex
+	calls [][]string
+	// drops holds, per call, the variables RunEnv removed; nil for Run and
+	// Stream.
+	drops      [][]string
 	unexpected [][]string
 	responses  []*Response
 	streams    []*FakeStream
@@ -147,6 +169,20 @@ func (f *FakeRunner) CallsContaining(tokens ...string) [][]string {
 	return out
 }
 
+// Drops returns, for each recorded argv containing tokens contiguously, the
+// variables RunEnv removed from its environment (nil for Run and Stream).
+func (f *FakeRunner) Drops(tokens ...string) [][]string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out [][]string
+	for i, c := range f.calls {
+		if Contains(c, tokens...) {
+			out = append(out, slices.Clone(f.drops[i]))
+		}
+	}
+	return out
+}
+
 // Unexpected returns the Run argv no response matched.
 func (f *FakeRunner) Unexpected() [][]string {
 	f.mu.Lock()
@@ -158,7 +194,7 @@ func (f *FakeRunner) Unexpected() [][]string {
 func (f *FakeRunner) Reset() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.calls, f.unexpected = nil, nil
+	f.calls, f.drops, f.unexpected = nil, nil, nil
 }
 
 // Contains reports whether argv contains tokens as a contiguous run.
@@ -176,8 +212,18 @@ func Contains(argv []string, tokens ...string) bool {
 
 // Run implements rex.Runner.
 func (f *FakeRunner) Run(ctx context.Context, argv []string) (rex.Result, error) {
+	return f.run(ctx, argv, nil)
+}
+
+// RunEnv implements rex.EnvRunner: Run, recording the dropped variables.
+func (f *FakeRunner) RunEnv(ctx context.Context, argv, drop []string) (rex.Result, error) {
+	return f.run(ctx, argv, slices.Clone(drop))
+}
+
+func (f *FakeRunner) run(ctx context.Context, argv, drop []string) (rex.Result, error) {
 	f.mu.Lock()
 	f.calls = append(f.calls, slices.Clone(argv))
+	f.drops = append(f.drops, drop)
 	var res rex.Result
 	matched := false
 	for i := len(f.responses) - 1; i >= 0; i-- {
@@ -213,6 +259,7 @@ func (f *FakeRunner) Run(ctx context.Context, argv []string) (rex.Result, error)
 func (f *FakeRunner) Stream(ctx context.Context, argv []string) (rex.LineStream, error) {
 	f.mu.Lock()
 	f.calls = append(f.calls, slices.Clone(argv))
+	f.drops = append(f.drops, nil)
 	var spec *FakeStream
 	for i, s := range f.streams {
 		if Contains(argv, s.tokens...) {
