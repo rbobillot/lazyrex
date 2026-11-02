@@ -73,6 +73,8 @@ A refused command shows `refused: REASON` and a line in the command log. A form 
 
 The Targets **Keymap & Actions** tab lists the same actions with their tags, and the server's keymap.
 
+A config reload is local only, however it is typed: `rex config reload`, `api call server.config_reload` or `do config.reload` from the palette, or any API method or action whose name holds `config` and `reload`. It is refused on a native or SSH target and with `-S`, and runs on this machine's server without `REX_SERVER`, after a confirmation. `w` on Targets runs it for you after writing the Rex app hosts file: [Rex app hosts file](safety.md#rex-app-hosts-file).
+
 ## Client actions
 
 - **Client actions** (Clients `a`) are listed fresh from `rex -C CLIENT actions --json`, tagged like server actions.
