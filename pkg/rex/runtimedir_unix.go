@@ -7,10 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 	"unicode"
@@ -19,7 +21,8 @@ import (
 // maxSocketPath keeps a tunnel socket under every platform's sun_path limit.
 const maxSocketPath = 100
 
-// longestSocketName is the longest name SSHEnv gives a tunnel socket.
+// longestSocketName is the longest name SSHEnv gives a tunnel socket; a
+// stable one ("/gui-" + 14 + "_" + 16 + ".sock") is as long.
 const longestSocketName = "/fwd-4294967295-18446744073709551615.sock"
 
 // maxBindPath is the longest path ssh can bind a socket at here: sun_path
@@ -186,7 +189,64 @@ func (OSSockets) Prepare(dir, path string) error {
 	case st.Mode()&fs.ModeSocket == 0 || !ownedByMe(st):
 		return fmt.Errorf("refusing to replace %s: not a socket of the current user", path)
 	}
-	return os.Remove(path)
+	return removeDead(path)
+}
+
+// removeDead removes a socket of mine only once a dial proves nothing serves
+// it. A dial failing any other way counts as live: a wedged listener keeps
+// its path.
+func removeDead(path string) error {
+	c, err := net.DialTimeout("unix", path, time.Second)
+	if err == nil {
+		c.Close()
+		return ErrLiveSocket
+	}
+	if !errors.Is(err, syscall.ECONNREFUSED) && !errors.Is(err, syscall.ENOENT) {
+		return ErrLiveSocket
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+// Claim implements TunnelSockets: an exclusive flock on the .lock file next
+// to the socket, which ends with this process and is never inherited.
+func (OSSockets) Claim(dir, path string) (func(), error) {
+	base, ok := strings.CutSuffix(path, ".sock")
+	if !ok || filepath.Dir(path) != dir || len(path) > maxSocketPath {
+		return nil, fmt.Errorf("socket path %q is not a short .sock path in %s", path, dir)
+	}
+	if err := checkRuntimeDir(dir); err != nil {
+		return nil, err
+	}
+	lock := base + ".lock"
+	// A lock deleted and recreated between the open and the flock is
+	// another file: lock again, a few times at most.
+	for range 3 {
+		f, err := os.OpenFile(lock, os.O_RDWR|os.O_CREATE|syscall.O_NOFOLLOW, 0o600)
+		if err != nil {
+			return nil, err
+		}
+		st, err := f.Stat()
+		if err != nil || !st.Mode().IsRegular() || !ownedByMe(st) {
+			f.Close()
+			return nil, fmt.Errorf("refusing lock %s: not a regular file of the current user", lock)
+		}
+		if err := tryLock(f); err != nil {
+			f.Close()
+			if errors.Is(err, syscall.EWOULDBLOCK) {
+				return nil, ErrSocketHeld
+			}
+			return nil, fmt.Errorf("lock %s: %w", lock, err)
+		}
+		if cur, err := os.Lstat(lock); err == nil && os.SameFile(st, cur) {
+			var once sync.Once
+			return func() { once.Do(func() { f.Close() }) }, nil
+		}
+		f.Close()
+	}
+	return nil, fmt.Errorf("lock %s keeps being replaced", lock)
 }
 
 // WaitReady implements TunnelSockets.
@@ -216,5 +276,5 @@ func (OSSockets) Cleanup(path string) {
 	if checkRuntimeDir(filepath.Dir(path)) != nil || !myLiveSocket(path) {
 		return
 	}
-	_ = os.Remove(path)
+	_ = removeDead(path)
 }

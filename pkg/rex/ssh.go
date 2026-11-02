@@ -343,10 +343,14 @@ func (p *SSHProbes) Forget(key string) {
 	delete(p.inflight, key)
 }
 
-// TunnelSockets creates and removes the local sockets of tunnels.
+// TunnelSockets creates and removes the local sockets of tunnels. None of
+// them ever removes a socket that accepts connections.
 type TunnelSockets interface {
-	// Prepare revalidates dir and removes a stale socket at path; it refuses
-	// any other file there.
+	// Claim takes the stable socket at path in dir for this process until
+	// release or exit; ErrSocketHeld when another process holds it.
+	Claim(dir, path string) (release func(), err error)
+	// Prepare revalidates dir and removes a dead socket at path; it refuses
+	// any other file there, and a live socket with ErrLiveSocket.
 	Prepare(dir, path string) error
 	// WaitReady reports whether the socket at path appeared before exited
 	// closed, ctx ended or the wait gave up.
@@ -363,13 +367,49 @@ type SSHEnv struct {
 	PID      int
 	Probes   *SSHProbes
 	Min, Max time.Duration
-	// seq numbers the tunnel sockets of every link, so an old link's
-	// cleanup never removes a newer link's socket.
+	// seq numbers the private tunnel sockets of every link, so an old
+	// link's cleanup never removes a newer link's socket.
 	seq atomic.Uint64
+	// claims holds, per stable socket, the loop using it in this process
+	// until that loop has returned, after its last Cleanup.
+	claimMu sync.Mutex
+	claims  map[string]chan struct{}
 }
 
 func (e *SSHEnv) socketPath(dir string) string {
 	return fmt.Sprintf("%s/fwd-%d-%d.sock", dir, e.PID, e.seq.Add(1))
+}
+
+// claim waits until no other loop of this process holds path, then holds it
+// until release; it reports false when ctx ends first.
+func (e *SSHEnv) claim(ctx context.Context, path string) (release func(), ok bool) {
+	for {
+		e.claimMu.Lock()
+		prev, held := e.claims[path]
+		if !held {
+			done := make(chan struct{})
+			if e.claims == nil {
+				e.claims = map[string]chan struct{}{}
+			}
+			e.claims[path] = done
+			e.claimMu.Unlock()
+			var once sync.Once
+			return func() {
+				once.Do(func() {
+					e.claimMu.Lock()
+					delete(e.claims, path)
+					e.claimMu.Unlock()
+					close(done)
+				})
+			}, true
+		}
+		e.claimMu.Unlock()
+		select {
+		case <-prev:
+		case <-ctx.Done():
+			return nil, false
+		}
+	}
 }
 
 // TunnelGroup tracks the tunnel goroutines, so quitting can wait for them.
