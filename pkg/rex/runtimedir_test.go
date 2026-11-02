@@ -15,9 +15,11 @@ import (
 )
 
 // privateDir returns a short private temporary directory without symlinks.
+// It lives in /tmp rather than $TMPDIR, which is too long for socket paths on
+// macOS.
 func privateDir(t *testing.T) string {
 	t.Helper()
-	d, err := os.MkdirTemp("", "lzr")
+	d, err := os.MkdirTemp("/tmp", "lzr")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,13 +30,22 @@ func privateDir(t *testing.T) string {
 	if err := os.Chmod(d, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if len(d) > 40 {
+	if len(d) > 33 {
 		t.Skipf("temporary directory %s is too long for socket paths", d)
 	}
 	return d
 }
 
-// TestPrepareRuntimeDir (1m).
+// wantErr fails unless err's text is exactly want.
+func wantErr(t *testing.T, err error, want string) {
+	t.Helper()
+	if err == nil || err.Error() != want {
+		t.Fatalf("error = %v, want %q", err, want)
+	}
+}
+
+// TestPrepareRuntimeDir (1m): a set XDG_RUNTIME_DIR is used as is or
+// refused, with the same messages as before the /tmp fallback existed.
 func TestPrepareRuntimeDir(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		xdg := privateDir(t)
@@ -49,10 +60,20 @@ func TestPrepareRuntimeDir(t *testing.T) {
 			t.Fatalf("second call = %q, %v", again, err)
 		}
 	})
-	for _, bad := range []string{"", "run/user/1000", "/run/user/../user/1000", "/tmp/a:b", "/tmp/a%b", "/tmp/a b", "/tmp/a~b", "/tmp/a\nb",
-		"/" + strings.Repeat("x", 60)} {
-		if dir, err := rex.PrepareRuntimeDir(bad); err == nil {
-			t.Errorf("PrepareRuntimeDir(%q) = %q", bad, dir)
+	long := "/" + strings.Repeat("x", 60)
+	for _, tc := range []struct{ xdg, want string }{
+		{"run/user/1000", `XDG_RUNTIME_DIR "run/user/1000" is not a clean absolute path`},
+		{"/run/user/../user/1000", `XDG_RUNTIME_DIR "/run/user/../user/1000" is not a clean absolute path`},
+		{"/tmp/a:b", `XDG_RUNTIME_DIR "/tmp/a:b" contains a character ssh options cannot hold`},
+		{"/tmp/a%b", `XDG_RUNTIME_DIR "/tmp/a%b" contains a character ssh options cannot hold`},
+		{"/tmp/a b", `XDG_RUNTIME_DIR "/tmp/a b" contains a character ssh options cannot hold`},
+		{"/tmp/a~b", `XDG_RUNTIME_DIR "/tmp/a~b" contains a character ssh options cannot hold`},
+		{"/tmp/a\nb", `XDG_RUNTIME_DIR "/tmp/a\nb" contains a character ssh options cannot hold`},
+		{long, `XDG_RUNTIME_DIR "` + long + `" is too long for socket paths`},
+	} {
+		dir, err := rex.PrepareRuntimeDir(tc.xdg)
+		if err == nil || err.Error() != tc.want {
+			t.Errorf("PrepareRuntimeDir(%q) = %q, %v, want %q", tc.xdg, dir, err, tc.want)
 		}
 	}
 	t.Run("parent 0755", func(t *testing.T) {
@@ -60,9 +81,8 @@ func TestPrepareRuntimeDir(t *testing.T) {
 		if err := os.Chmod(xdg, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := rex.PrepareRuntimeDir(xdg); err == nil {
-			t.Fatal("accepted")
-		}
+		_, err := rex.PrepareRuntimeDir(xdg)
+		wantErr(t, err, xdg+" is accessible to other users (mode 0755)")
 	})
 	t.Run("parent symlinked", func(t *testing.T) {
 		target := privateDir(t)
@@ -70,18 +90,21 @@ func TestPrepareRuntimeDir(t *testing.T) {
 		if err := os.Symlink(target, link); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := rex.PrepareRuntimeDir(link); err == nil {
-			t.Fatal("accepted")
-		}
+		_, err := rex.PrepareRuntimeDir(link)
+		wantErr(t, err, `XDG_RUNTIME_DIR "`+link+`" is or goes through a symlink`)
+	})
+	t.Run("parent missing", func(t *testing.T) {
+		missing := filepath.Join(privateDir(t), "missing")
+		_, err := rex.PrepareRuntimeDir(missing)
+		wantErr(t, err, `XDG_RUNTIME_DIR "`+missing+`" is or goes through a symlink`)
 	})
 	t.Run("lazyrex symlink", func(t *testing.T) {
 		xdg := privateDir(t)
 		if err := os.Symlink(privateDir(t), filepath.Join(xdg, "lazyrex")); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := rex.PrepareRuntimeDir(xdg); err == nil {
-			t.Fatal("accepted")
-		}
+		_, err := rex.PrepareRuntimeDir(xdg)
+		wantErr(t, err, xdg+"/lazyrex is a symlink")
 	})
 	t.Run("lazyrex 0755", func(t *testing.T) {
 		xdg := privateDir(t)
@@ -91,8 +114,28 @@ func TestPrepareRuntimeDir(t *testing.T) {
 		if err := os.Chmod(filepath.Join(xdg, "lazyrex"), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := rex.PrepareRuntimeDir(xdg); err == nil {
-			t.Fatal("accepted")
+		_, err := rex.PrepareRuntimeDir(xdg)
+		wantErr(t, err, xdg+"/lazyrex is accessible to other users (mode 0755)")
+	})
+	t.Run("lazyrex regular file", func(t *testing.T) {
+		xdg := privateDir(t)
+		if err := os.WriteFile(filepath.Join(xdg, "lazyrex"), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		_, err := rex.PrepareRuntimeDir(xdg)
+		wantErr(t, err, xdg+"/lazyrex is not a directory")
+	})
+	t.Run("recreated after removal", func(t *testing.T) {
+		xdg := privateDir(t)
+		dir, err := rex.PrepareRuntimeDir(xdg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.RemoveAll(dir); err != nil {
+			t.Fatal(err)
+		}
+		if again, err := rex.PrepareRuntimeDir(xdg); err != nil || again != dir || !exists(dir) {
+			t.Fatalf("after removal = %q, %v", again, err)
 		}
 	})
 }
