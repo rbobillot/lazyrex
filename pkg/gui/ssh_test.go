@@ -371,15 +371,16 @@ func TestPreparedConfirmEqualsExecuted(t *testing.T) {
 	}
 }
 
-// TestSSHMacOSFallbackGUI (C24): a macOS server with Rex Beta and its
-// percent-encoded endpoint comes online through the tunnel, and the Status
-// tab gives the endpoint and the command for the Rex app.
+// TestSSHMacOSFallbackGUI (C24, amended by H32): a macOS server with Rex Beta
+// and its percent-encoded endpoint comes online through the tunnel, and the
+// Status tab gives the endpoint and the state of its Rex app host.
 func TestSSHMacOSFallbackGUI(t *testing.T) {
 	const betaRex = "/Applications/Rex Beta.app/Contents/Helpers/Rex Server.rex/Contents/MacOS/rex"
 	fr := sshRunner("/bin/zsh")
 	fr.On(pathProbeArg).Return(rextest.FixtureString("rex_path_probe_beta.txt"), "ls: /usr/local/bin/rex: No such file or directory\n", 1)
 	fr.On(quoted("whoami", "--json")...).Return(rextest.FixtureString("whoami_remote_macos.json"), "", 0)
-	s := newSSHHarness(t, fr, nil, withConfig(sshConfig), withInitial("remote-host"))
+	home := rextest.PrivateDir(t)
+	s := newSSHHarness(t, fr, nil, withConfig(sshConfig), withInitial("remote-host"), withRexEnv(home, nil))
 	s.waitState(rex.StateOnline)
 	tunnels := s.tunnels()
 	if len(tunnels) != 1 || !slices.Contains(tunnels[0], sshStableSock+":/Users/user/Library/Application Support/rex/server.sock") {
@@ -390,7 +391,8 @@ func TestSSHMacOSFallbackGUI(t *testing.T) {
 	}
 	st := RenderStatus(s.st)
 	if !containsAll(st, "forward mode, tunnel up", "gui endpoint  unix://"+sshStableSock+"\n",
-		"\nrex hosts add remote-host unix://"+sshStableSock+"\n") {
+		"\nRex app host remote-host-lazyrex in "+home+"/.config/rex/lazyrex-hosts.lua: not written yet\n") ||
+		strings.Contains(st, "rex hosts add") {
 		t.Fatalf("status tab:\n%s", st)
 	}
 	execCalls := fr.CallsContaining("'--autostart=false'")

@@ -348,11 +348,10 @@ type sshTransport interface {
 
 type guiLink interface{ GUIEndpoint() rex.GUIEndpoint }
 
-// gui says what to enter in the Rex app to reach the target named name, then
-// a blank line. pkg/gui has no clipboard, so the command stands alone on its
-// line to be selected.
-func (l *lines) gui(name string, ep rex.GUIEndpoint) {
-	n, uri := render.Label(name), render.Label(ep.URI)
+// gui shows the target's gui endpoint and, where there is one, its Rex app
+// host, then a blank line.
+func (l *lines) gui(s *State, ep rex.GUIEndpoint) {
+	n, uri := render.Label(s.TargetName), render.Label(ep.URI)
 	hint := true
 	switch ep.State {
 	case rex.GUIForwarded:
@@ -376,11 +375,12 @@ func (l *lines) gui(name string, ep rex.GUIEndpoint) {
 		return
 	}
 	if hint {
-		l.add("")
-		l.add("Rex app: add a host with this endpoint, or run once (lazyrex never runs it):")
-		l.add("%s", render.Label(rex.HostsAddHint(name, ep.URI)))
-		l.add("It works while lazyrex runs with %s active. Rex has no transport auth: only your user can open this socket.", n)
-		l.add("Rex syncs hosts to your other devices, where this path reaches nothing unless lazyrex forwards it there.")
+		var b lines
+		b.rexHost(s, s.TargetName)
+		if b.b.Len() > 0 {
+			l.add("")
+			l.b.WriteString(b.b.String())
+		}
 	}
 	l.add("")
 }
@@ -466,7 +466,7 @@ func RenderStatus(s *State) string {
 	}
 	l.add("")
 	if g, ok := s.Transport.(guiLink); ok {
-		l.gui(s.TargetName, g.GUIEndpoint())
+		l.gui(s, g.GUIEndpoint())
 	}
 	if s.StreamUp {
 		l.add("event stream  up")

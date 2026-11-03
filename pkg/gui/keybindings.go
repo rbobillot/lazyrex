@@ -88,6 +88,7 @@ func DefaultBindings() []Binding {
 	p(PanelTargets, "addTarget", "add a config target", true, "a")
 	p(PanelTargets, "editTarget", "edit a config target", false, "e")
 	p(PanelTargets, "removeTarget", "remove a config target", false, "d")
+	p(PanelTargets, "writeRexHosts", "write the Rex app hosts file", false, "w")
 
 	p(PanelSessions, "scope", "scope windows and blocks to it", true, "<enter>")
 	p(PanelSessions, "newSession", "new session", true, "n")

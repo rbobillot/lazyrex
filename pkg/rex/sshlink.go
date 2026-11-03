@@ -122,7 +122,7 @@ func NewSSHLink(ctx context.Context, o LinkOptions) *SSHLink {
 		return l
 	}
 	l.dir = dir
-	l.stable = dir + "/" + stableSocketName(o.Name, o.Spec)
+	l.stable = StableSocketPath(dir, o.Name, o.Spec)
 	return l
 }
 

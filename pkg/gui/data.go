@@ -76,6 +76,7 @@ func (c *Controller) LoadAll() {
 		c.onConn(t, func() { c.readStatus(t, statusRefresh) })
 	})
 	c.refreshHosts()
+	c.refreshRexHosts()
 }
 
 func (c *Controller) markPolled() {

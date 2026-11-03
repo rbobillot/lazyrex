@@ -1,0 +1,10 @@
+{
+  "generation": 2,
+  "diagnostics": [
+    {
+      "severity": "notice",
+      "source": "init.lua:3",
+      "message": "x"
+    }
+  ]
+}

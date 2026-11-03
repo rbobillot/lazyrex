@@ -259,18 +259,6 @@ func slug(name string) string {
 // it.
 func SocketURI(path string) string { return (&url.URL{Scheme: "unix", Path: path}).String() }
 
-// HostsAddHint is the command a human runs for the Rex app; lazyrex shows it
-// and never runs it.
-func HostsAddHint(label, uri string) string {
-	words := []string{"rex", "hosts", "add", label, uri}
-	for i, w := range words {
-		if !plainWord(w) {
-			words[i] = ShellQuote(w)
-		}
-	}
-	return strings.Join(words, " ")
-}
-
 // SSHProbe is what lazyrex learns of an SSH target once: its login shell
 // and where rex is. Fail holds the status of a probe that failed.
 type SSHProbe struct {

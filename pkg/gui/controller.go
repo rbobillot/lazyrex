@@ -13,6 +13,7 @@ import (
 	"github.com/rbobillot/lazyrex/pkg/config"
 	"github.com/rbobillot/lazyrex/pkg/render"
 	"github.com/rbobillot/lazyrex/pkg/rex"
+	"github.com/rbobillot/lazyrex/pkg/rexhosts"
 )
 
 // ErrQuit is returned by Dispatch for the quit action.
@@ -48,6 +49,9 @@ type Options struct {
 	SSH *rex.SSHEnv
 	// SSHConfigHosts are the ~/.ssh/config aliases offered by addTarget.
 	SSHConfigHosts []string
+	// Env and HomeDir locate the Rex app hosts file; nil turns it off.
+	Env     func(string) string
+	HomeDir func() (string, error)
 }
 
 type action struct {
@@ -99,8 +103,22 @@ type Controller struct {
 	hostsInflight bool
 	hostsDirty    bool
 	checkedOnce   bool
-	file          config.File
-	configBusy    bool
+	// hostsStarted numbers the hosts lists started; hostsApplied is the
+	// number of the last one applied, reloadAfter hostsStarted at the last
+	// successful reload of the local server.
+	hostsStarted, hostsApplied, reloadAfter uint64
+	reloaded                                bool
+	// rh is the last look at the Rex app hosts file, numbered rhApplied.
+	env                 func(string) string
+	homeDir             func() (string, error)
+	rh                  rexHostsLoad
+	rhLoaded            bool
+	rhSeq, rhApplied    uint64
+	rhInflight, rhDirty bool
+	rhBusy              bool
+	writeHosts          func(rexhosts.Paths, []byte, rexhosts.Snapshot) error
+	file                config.File
+	configBusy          bool
 	// configEdits names the config entry the running edit changes.
 	configEdits string
 	// probes numbers the inactive-target probes.
@@ -137,6 +155,7 @@ func NewController(st *State, client *rex.Client, ui UI, o Options) *Controller 
 		st: st, client: client, ui: ui, clock: clock, cfg: o.Config, bindings: o.Bindings,
 		root: context.Background(), captureFormat: o.Config.Capture.Format, stream: o.StartStream,
 		cfgTargets: o.Targets, flag: o.Flag, file: o.File, ssh: o.SSH, sshHosts: o.SSHConfigHosts,
+		env: o.Env, homeDir: o.HomeDir, writeHosts: rexhosts.Write,
 	}
 	if c.stream == nil {
 		c.stream = func(ctx context.Context, sup *rex.Supervisor) { go sup.Run(ctx) }
@@ -388,17 +407,18 @@ func (c *Controller) registerActions() {
 		"scrollUp":       all(func(Panel) { c.st.scrollMain(-1) }),
 		"scrollPageDown": all(func(Panel) { c.st.scrollMain(c.st.Main.Height) }),
 		"scrollPageUp":   all(func(Panel) { c.st.scrollMain(-c.st.Main.Height) }),
-		"refresh":        all(func(Panel) { c.refreshAll(); c.loadMain(); c.refreshHosts() }),
+		"refresh":        all(func(Panel) { c.refreshAll(); c.loadMain(); c.refreshHosts(); c.refreshRexHosts() }),
 		"menu":           all(c.menu),
 		"palette":        all(func(Panel) { c.palette() }),
 
-		"activate":     only(noArg(c.activate), PanelTargets),
-		"startServer":  only(noArg(c.startServer), PanelTargets),
-		"stopServer":   only(noArg(c.stopServer), PanelTargets),
-		"checkTarget":  only(noArg(c.checkSelected), PanelTargets),
-		"addTarget":    only(noArg(c.addTarget), PanelTargets),
-		"editTarget":   only(noArg(c.editTarget), PanelTargets),
-		"removeTarget": only(noArg(c.removeTarget), PanelTargets),
+		"activate":      only(noArg(c.activate), PanelTargets),
+		"startServer":   only(noArg(c.startServer), PanelTargets),
+		"stopServer":    only(noArg(c.stopServer), PanelTargets),
+		"checkTarget":   only(noArg(c.checkSelected), PanelTargets),
+		"addTarget":     only(noArg(c.addTarget), PanelTargets),
+		"editTarget":    only(noArg(c.editTarget), PanelTargets),
+		"removeTarget":  only(noArg(c.removeTarget), PanelTargets),
+		"writeRexHosts": only(noArg(c.writeRexHosts), PanelTargets),
 
 		"scope":         only(c.scope, PanelSessions, PanelWindows),
 		"newSession":    only(noArg(c.newSession), PanelSessions),

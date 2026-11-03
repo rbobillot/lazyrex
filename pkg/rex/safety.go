@@ -200,6 +200,36 @@ func cliCommand(args []string) []string {
 	return nil
 }
 
+// IsLocalOnly reports whether cmd checks or reloads a server's config,
+// whatever builds it: rex config, or an API method, action or block method
+// whose name holds both config and reload.
+func IsLocalOnly(c Cmd) bool {
+	if c.LocalOnly {
+		return true
+	}
+	if w := cliCommand(c.Args); len(w) > 0 && w[0] == "config" {
+		return true
+	}
+	if c.Kind == KindAPI {
+		t := NameTokens(c.Name)
+		return slices.Contains(t, "config") && slices.Contains(t, "reload")
+	}
+	return false
+}
+
+// namesServer reports whether args pick a server with -S or --server.
+func namesServer(args []string) bool {
+	for _, a := range args {
+		if a == "--" {
+			return false
+		}
+		if strings.HasPrefix(a, "-S") || a == "--server" || strings.HasPrefix(a, "--server=") {
+			return true
+		}
+	}
+	return false
+}
+
 func cliDenied(args []string) string {
 	words := cliCommand(args)
 	if len(words) < 2 {

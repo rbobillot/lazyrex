@@ -30,7 +30,17 @@ func (c *Controller) setConfigTargets(ts []rex.Target) {
 // rebuildTargets lists the config, --server and discovered targets, keeping
 // each row's last probe and selection, and returns the hosts it hid.
 func (c *Controller) rebuildTargets() []string {
-	rows, hidden := rex.MergeTargets(c.baseTargets(), c.hosts, c.conn.Load().target)
+	var hosts []rex.Host
+	var own []string
+	for _, h := range c.hosts {
+		if managedOwn(h) {
+			own = append(own, fmt.Sprintf("hosts: hid %q: lazyrex's own host", h.Label))
+			continue
+		}
+		hosts = append(hosts, h)
+	}
+	rows, hidden := rex.MergeTargets(c.baseTargets(), hosts, c.conn.Load().target)
+	hidden = append(hidden, own...)
 	old := c.st.Targets
 	c.st.keepSelection(func() {
 		c.st.Targets = make([]TargetRow, len(rows))
@@ -196,12 +206,13 @@ func (c *Controller) refreshHosts() {
 		return
 	}
 	c.hostsInflight = true
-	ctx := c.root
+	c.hostsStarted++
+	ctx, seq := c.root, c.hostsStarted
 	c.ui.Go(func() {
 		out, err := c.home.Exec(ctx, cmds.HostsList(), false)
 		c.ui.Update(func() {
 			c.hostsInflight = false
-			c.applyHosts(out, err)
+			c.applyHosts(out, err, seq)
 		})
 	})
 }
@@ -232,15 +243,17 @@ func (c *Controller) hostsFailed(what string, out rex.Outcome, err error) bool {
 func (c *Controller) dropHosts() {
 	c.hosts = nil
 	c.rebuildTargets()
+	c.syncRexHosts()
 }
 
 // applyHosts records a hosts list. A failure keeps the last good list,
 // except a stopped home server, whose hosts are dropped.
-func (c *Controller) applyHosts(out rex.Outcome, err error) {
+func (c *Controller) applyHosts(out rex.Outcome, err error, seq uint64) {
 	if err != nil || out.Kind != rex.ExitOK {
 		if !c.hostsFailed("hosts list", out, err) {
 			c.dropHosts()
 		}
+		c.syncRexHosts()
 		c.syncMain()
 		return
 	}
@@ -249,9 +262,11 @@ func (c *Controller) applyHosts(out rex.Outcome, err error) {
 		h := &c.st.Hosts
 		h.HomeStopped, h.Err = false, render.Label(perr.Error())
 		c.Popups.Toast("error: parse hosts list: " + perr.Error())
+		c.syncRexHosts()
 		c.syncMain()
 		return
 	}
+	c.hostsApplied = max(c.hostsApplied, seq)
 	h := &c.st.Hosts
 	h.Loaded, h.HomeStopped, h.Err, h.Home, h.Warnings = true, false, "", v.Home, nil
 	for _, w := range v.Warnings {
@@ -268,10 +283,11 @@ func (c *Controller) applyHosts(out rex.Outcome, err error) {
 	for _, w := range h.Warnings {
 		c.st.appendLog(ts + " hosts: warning: " + w)
 	}
-	if !c.checkedOnce && len(c.hosts) > 0 {
+	if !c.checkedOnce && slices.ContainsFunc(c.hosts, func(h rex.Host) bool { return !managedOwn(h) }) {
 		c.checkedOnce = true
 		c.checkHosts()
 	}
+	c.syncRexHosts()
 	c.syncMain()
 }
 
@@ -315,6 +331,9 @@ func (c *Controller) applyCheck(out rex.Outcome, err error, partial bool) {
 		c.checks = rep.Entries
 		h.Skipped, h.Unrecognized, h.Unmatched, h.Unlisted = rep.Skipped, rep.Unrecognized, 0, nil
 		for _, e := range rep.Entries {
+			if slices.ContainsFunc(c.hosts, func(h rex.Host) bool { return managedOwn(h) && strings.EqualFold(h.Label, e.Label) }) {
+				continue
+			}
 			matched := slices.ContainsFunc(c.st.Targets, func(r TargetRow) bool {
 				return r.Target.Kind == rex.TargetNative && strings.EqualFold(r.Target.Server, e.Label)
 			})

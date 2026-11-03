@@ -73,6 +73,8 @@ func samples() map[string]rex.Cmd {
 		"APIDescribe":    cmds.APIDescribe("session.resize_pane"),
 		"APIList":        cmds.APIList(),
 		"Raw":            cmds.Raw("server", "status", "--json"),
+		"ConfigCheck":    cmds.ConfigCheck("/tmp/x.lua"),
+		"ConfigReload":   cmds.ConfigReload(),
 	}
 }
 

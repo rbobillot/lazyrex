@@ -114,7 +114,22 @@ type harnessCfg struct {
 	ssh       *rex.SSHEnv
 	sshHosts  []string
 	sshFlag   *string
+	rexHome   *string
+	rexEnv    map[string]string
+	plain     bool
 }
+
+// withRexEnv turns the Rex app hosts file on: lazyrex's environment is env
+// and its home directory home.
+func withRexEnv(home string, env map[string]string) harnessOpt {
+	return func(c *harnessCfg) { c.rexHome, c.rexEnv = &home, env }
+}
+
+// withoutEnvRunner hides the runner's RunEnv from the client.
+func withoutEnvRunner() harnessOpt { return func(c *harnessCfg) { c.plain = true } }
+
+// plainRunner is a runner without RunEnv.
+type plainRunner struct{ rex.Runner }
 
 // withSSH gives SSH targets the environment env.
 func withSSH(env *rex.SSHEnv) harnessOpt { return func(c *harnessCfg) { c.ssh = env } }
@@ -160,12 +175,21 @@ func newHarness(t *testing.T, opts ...harnessOpt) *harness {
 		fr.On("hosts", "list", "--json").Return(rextest.FixtureString(cfg.hosts), "", 0)
 	}
 	policy, warnings := rex.NewPolicy(cfg.self, cfg.allow)
-	client := &rex.Client{Runner: fr, Transport: cfg.transport, Binary: "rex", Timeout: 10 * time.Second, Policy: policy}
+	var runner rex.Runner = fr
+	if cfg.plain {
+		runner = plainRunner{fr}
+	}
+	client := &rex.Client{Runner: runner, Transport: cfg.transport, Binary: "rex", Timeout: 10 * time.Second, Policy: policy}
 	clk := rextest.NewFakeClock(time.Unix(1_000_000, 0))
 	st := NewState()
 	h := &harness{t: t, fr: fr, clk: clk, st: st, client: client}
 	o := Options{Clock: clk, Config: config.Default(), Bindings: DefaultBindings(), Warnings: warnings,
 		SSH: cfg.ssh, SSHConfigHosts: cfg.sshHosts}
+	if cfg.rexHome != nil {
+		env, home := cfg.rexEnv, *cfg.rexHome
+		o.Env = func(k string) string { return env[k] }
+		o.HomeDir = func() (string, error) { return home, nil }
+	}
 	if cfg.config != nil || cfg.initial != nil || cfg.sshFlag != nil {
 		if cfg.config != nil {
 			h.cfgPath = filepath.Join(t.TempDir(), "config.yml")

@@ -1,0 +1,16 @@
+{
+  "home": {"label": "", "endpoint": "unix:///run/user/1000/rex/server.sock", "this_machine": true, "reached": true},
+  "hosts": [
+    {"id": "host:11", "label": "edge-lazyrex", "endpoints": ["unix:///run/user/1000/lazyrex/gui-edge_ce63845b8c961e37.sock"], "source": "lazyrex-hosts.lua:4"},
+    {"id": "host:12", "label": "edge", "endpoints": ["unix:///run/user/1000/lazyrex/gui-edge_ce63845b8c961e37.sock"], "added_from": "laptop"},
+    {"id": "host:13", "label": "remote-host-lazyrex", "endpoints": ["tcp://10.0.0.9:7297"]},
+    {"id": "host:14", "label": "old-lazyrex", "endpoints": ["unix:///run/user/1000/lazyrex/gui-old_0123456789abcdef.sock"], "source": "init.lua:2"},
+    {"id": "host:15", "label": "gone-lazyrex", "endpoints": ["unix:///run/user/1000/lazyrex/gui-gone_0123456789abcdef.sock"], "source": "/Users/Jane Doe/.config/rex/lazyrex-hosts.lua:5"},
+    {"id": "host:16", "label": "studio", "endpoints": [], "source": "stored"},
+    {"id": "host:17", "label": "nulls-lazyrex", "endpoints": null, "source": null},
+    {"id": "host:18", "label": "cfg-lazyrex", "endpoints": ["unix:///run/user/1000/lazyrex/gui-cfg_0123456789abcdef.sock"], "added_from": "lazyrex-hosts.lua:4", "source": "config"},
+    {"id": "host:19", "label": "empty-lazyrex", "endpoints": [], "source": "lazyrex-hosts.lua:6"},
+    {"id": "host:20", "label": "mixed-lazyrex", "endpoints": ["unix:///run/user/1000/lazyrex/gui-mixed_0123456789abcdef.sock", "tcp://10.0.0.9:7297"], "source": "lazyrex-hosts.lua:7"}
+  ],
+  "warnings": []
+}

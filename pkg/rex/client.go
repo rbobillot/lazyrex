@@ -139,6 +139,14 @@ func (c *Client) Decide(cmd Cmd) Decision {
 	if cmd.Err != nil {
 		return Decision{Verdict: Deny, Reason: cmd.Err.Error()}
 	}
+	if IsLocalOnly(cmd) {
+		if _, local := c.Transport.(Local); !local || namesServer(cmd.Args) {
+			return Decision{Verdict: Deny, Reason: "runs on this machine's server only, never through -S or ssh"}
+		}
+		if _, ok := c.Runner.(EnvRunner); !ok {
+			return Decision{Verdict: Deny, Reason: "runs on this machine's server only, and this runner cannot leave REX_SERVER out"}
+		}
+	}
 	if t, ok := c.Transport.(interface{ Check() error }); ok {
 		if err := t.Check(); err != nil {
 			return Decision{Verdict: Deny, Reason: err.Error()}
@@ -260,7 +268,11 @@ func (c *Client) runPrepared(ctx context.Context, p *Prepared, confirmed bool, g
 	if ctx.Err() != nil {
 		return Outcome{Kind: ExitInterrupted, Display: p.Display}, nil
 	}
-	return c.run(cctx, p.argv, p.Display, p.route), nil
+	var drop []string
+	if IsLocalOnly(p.Cmd) {
+		drop = []string{"REX_SERVER"}
+	}
+	return c.run(cctx, p.argv, p.Display, p.route, drop), nil
 }
 
 // sameTransport compares transports without panicking on a transport type
@@ -290,10 +302,21 @@ func extraTimeout(t Transport) time.Duration {
 	return 0
 }
 
-// run runs argv under cctx and logs it; route maps the exit code.
-func (c *Client) run(cctx context.Context, argv []string, display string, route Transport) Outcome {
+// run runs argv under cctx, without the variables in drop, and logs it;
+// route maps the exit code.
+func (c *Client) run(cctx context.Context, argv []string, display string, route Transport, drop []string) Outcome {
 	start := time.Now()
-	res, err := c.Runner.Run(cctx, argv)
+	var res Result
+	var err error
+	if drop != nil {
+		er, ok := c.Runner.(EnvRunner)
+		if !ok {
+			return Outcome{Kind: ExitStartError, Result: Result{Code: -1}, Display: display, Toast: "this runner cannot leave REX_SERVER out"}
+		}
+		res, err = er.RunEnv(cctx, argv, drop)
+	} else {
+		res, err = c.Runner.Run(cctx, argv)
+	}
 	if res.Duration == 0 {
 		res.Duration = time.Since(start)
 	}
@@ -329,7 +352,7 @@ func (c *Client) runArgv(ctx context.Context, argv []string, timeout time.Durati
 	}
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	return c.run(cctx, argv, displayArgv(argv), SSHExec{})
+	return c.run(cctx, argv, displayArgv(argv), SSHExec{}, nil)
 }
 
 // streamArgv starts a long-lived argv lazyrex builds itself (the ssh tunnel).
@@ -341,6 +364,9 @@ func (c *Client) streamArgv(ctx context.Context, argv []string) (LineStream, err
 // It is logged when it ends.
 func (c *Client) Stream(ctx context.Context, cmd Cmd) (LineStream, error) {
 	d := c.Decide(cmd)
+	if d.Verdict == Allow && IsLocalOnly(cmd) {
+		d = Decision{Verdict: Deny, Reason: "a local-only command does not stream"}
+	}
 	if d.Verdict != Allow {
 		c.Refuse(cmd, d.Reason)
 		return nil, &DeniedError{Reason: d.Reason}

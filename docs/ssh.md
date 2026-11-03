@@ -100,25 +100,30 @@ sequenceDiagram
 
 ## Using the remote server from the Rex app
 
-> 🖥️ **The short version**: activate the SSH target, then run the `rex hosts add` line its Status tab shows, once. The Rex app then reaches that server while lazyrex runs with the target active.
+> 🖥️ **The short version**: activate the SSH target, press `w` on Targets and confirm twice, then add the one line its Status tab shows to `init.lua`, once. The Rex app then reaches that server while lazyrex runs with the target active.
 
-The Status tab of an active forward-mode target shows:
+`w` writes `lazyrex-hosts.lua` in Rex's config directory, with one `rex.host` line per forward-mode SSH target of the config file, after `rex config check` passed on it and you confirmed the path and every line. It then offers to run `rex config reload` on this machine's server, after a second confirmation. lazyrex never edits `init.lua`, so the file declares hosts only once `init.lua` loads it. Until then, the Status tab of an active forward-mode target shows:
 
 ```text
 gui endpoint  unix:///private/tmp/lazyrex-501/run/gui-edge_883cac6c085904fe.sock
 
-Rex app: add a host with this endpoint, or run once (lazyrex never runs it):
-rex hosts add edge unix:///private/tmp/lazyrex-501/run/gui-edge_883cac6c085904fe.sock
+Rex app host edge-lazyrex in /Users/me/.config/rex/lazyrex-hosts.lua: up to date, not loaded yet
+If /Users/me/.config/rex/init.lua does not load it yet, add this line there (lazyrex never creates or edits /Users/me/.config/rex/init.lua):
+do local f = loadfile("/Users/me/.config/rex/lazyrex-hosts.lua"); if f then f() end end
+Then w (Targets) reloads the local Rex server, after a confirmation.
+It works while lazyrex runs with edge active. Rex has no transport auth: only your user can open this socket.
 ```
 
-That is target `edge` with `ssh_host: edge` on macOS, where `/tmp` resolves to `/private/tmp`.
+That is target `edge` with `ssh_host: edge` on macOS, where `/tmp` resolves to `/private/tmp`. Once the server loaded the file, the first line ends in `up to date, loaded by the local Rex server`.
 
-- **Label**: the line uses the target name, so the synced host and the SSH row stay one row: Targets hides the host, with a `hosts: hid "edge": the name is taken by target "edge"` line in the command log. That is expected. Under another label it would be a native row, and activating it would end the tunnel it goes through.
-- **Lifetime**: the socket exists only while lazyrex runs with the target active; lazyrex installs no service. Renaming the target or changing `ssh_host` or `rex_path` changes the path: add the host again.
+- **Label**: the host is `NAME-lazyrex` (the target name in lowercase letters, digits and `-`, at most 63 bytes), and Targets hides it, with a `hosts: hid "edge-lazyrex": lazyrex's own host` line in the command log. It is not the bare target name because Rex leaves a declared host out when another host already holds its label. A target whose name gives no label, or two targets that would share one, get no host: Status says which to rename.
+- **This machine only**: the hosts belong to this machine's server and never sync to your other devices. `rex config check` and `rex config reload` always go to this machine, never through `-S` or ssh.
+- **Old `rex hosts add` host**: a host you added with `rex hosts add` for this socket syncs to your other devices, where it reaches nothing. Status names it: remove it in the Rex app. lazyrex never removes hosts.
+- **Lifetime**: the socket exists only while lazyrex runs with the target active; lazyrex installs no service. Renaming the target or changing `ssh_host` or `rex_path` changes the path and makes the file out of date: press `w` again.
 - **Access**: Rex has no transport authentication on a Unix socket, but the runtime directory is yours alone (mode 0700).
-- **Other devices**: Rex syncs hosts to your other devices, where this path reaches nothing unless a lazyrex forwards it there, possibly to another machine if `ssh_host` resolves differently there.
-- **Two lazyrex**: the second one says `served by another lazyrex for this same target` and uses a private socket; activate the target again once the first quits to take the stable one over.
-- There is no endpoint in exec mode, configured or as a fallback: the Status tab says why.
+- **`REX_SERVER`**: while it is set, the file is not available, since lazyrex cannot tell which server reads it. Targets still reads hosts from that server.
+- **Two lazyrex**: the second one says `served by another lazyrex for this same target` and uses a private socket; activate the target again once the first quits to take the stable one over. Two lazyrex never write the file at once: the second one says `another lazyrex is writing PATH; press w again`.
+- There is no endpoint in exec mode, configured or as a fallback: the Status tab says why, and the file declares no host for that target.
 
 ## Exec mode
 
@@ -150,5 +155,10 @@ Forward mode runs your local `rex` against the remote server; exec mode runs the
 | calls on an active SSH target fail after a tmp cleaner removed `/tmp/lazyrex-UID` | the open target keeps its runtime directory until it is activated again | activate the target again: lazyrex recreates the directory |
 | `ssh tunnel to remote-host is down`, `not connected yet` | a command was refused while the route was not up | wait for the tunnel, then run it again |
 | `the route to remote-host changed since this command was prepared; run it again` | the tunnel or the mode changed while a confirmation waited | run it again |
+| `PATH is not a file lazyrex wrote (...): lazyrex leaves it alone` | `lazyrex-hosts.lua` exists without lazyrex's header, or is a symlink or not a regular file of yours | move it away, then `w` |
+| `PATH not written: rex config check: ...` | this machine's `rex` rejected the file lazyrex would write, or reported anything about it | read the message; nothing was written |
+| `Rex app host NAME-lazyrex: the label is taken by another host (...)` | a host stored through the API or declared elsewhere already holds the label, so Rex leaves lazyrex's out | remove or rename that host in the Rex app |
+| `up to date, still not loaded after the reload` | the server reloaded, but its hosts list still lacks the host: `init.lua` does not load the file, or this Rex ignores hosts declared in a loaded file | check the line in `init.lua` and the reload output in the command log, or copy the `rex.host` line Status shows into `init.lua` |
+| `another lazyrex is writing PATH; press w again` | another lazyrex holds the lock on Rex's config directory | wait, then `w` again |
 
 A mutation failing with exit 255 toasts the first stderr line and checks the target again. Probe results are kept, failures included: after fixing something, `c` on the row probes again. More states: [Troubleshooting](troubleshooting.md).
