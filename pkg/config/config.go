@@ -62,6 +62,9 @@ type Config struct {
 	Safety struct {
 		AllowActions []string `yaml:"allow_actions"`
 	} `yaml:"safety"`
+	Experimental struct {
+		RexHostsFile bool `yaml:"rex_hosts_file"`
+	} `yaml:"experimental"`
 	// Keybindings maps panel (universal, targets, sessions, windows, blocks,
 	// clients, main) to action to the keys replacing the action's defaults.
 	Keybindings map[string]map[string]KeyList `yaml:"keybindings"`

@@ -29,6 +29,15 @@ safety:
   # when listed here.
   allow_actions: []
 
+experimental:
+  # w on Targets writes lazyrex-hosts.lua in Rex's config directory, declaring
+  # a host for each forward-mode SSH target, then reloads the local Rex
+  # server, after a confirmation each (docs/ssh.md). Off by default: as of
+  # Rex Beta (November 2026) the Rex app does not show declared hosts; off,
+  # the Status tab shows how to add the host in the Rex app or with
+  # rex hosts add instead. Read at start only.
+  rex_hosts_file: false
+
 # Key overrides: panel -> action -> key or list of keys. An override replaces
 # all default keys of that action. Panels: universal, targets, sessions,
 # windows, blocks, clients, main. Keys: one character, or <enter>, <esc>,
