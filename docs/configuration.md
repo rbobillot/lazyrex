@@ -1,6 +1,6 @@
 # Configuration
 
-> **One optional YAML file sets the `rex` binary and timeout, refresh intervals, capture size, the safety allow-list, key overrides and your targets; every key has a default.** lazyrex reads it once at start, and edits only its `targets` list from the UI.
+> **One optional YAML file sets the `rex` binary and timeout, refresh intervals, capture size, the safety allow-list, key overrides, your targets and experimental switches; every key has a default.** lazyrex reads it once at start, and edits only its `targets` list from the UI.
 
 ## Where it is
 
@@ -50,6 +50,7 @@ Every key is optional. Keys lazyrex does not know are ignored, and kept when laz
 | `capture.max_lines` | `5000` | lines of scrollback kept for the Capture tab, from 1 to 1000000 |
 | `capture.format` | `vt` | `vt` keeps colors, `text` is plain; lazyrex falls back to `text` for good if `rex` rejects `vt` |
 | `safety.allow_actions` | `[]` | exact update or install action names to let through to the confirmation prompt (such as `checkForUpdates`), from the palette, `x` menus and Clients `a`; host, pairing, listener and Tailscale operations are always denied, even when listed here |
+| `experimental.rex_hosts_file` | `false` | lets `w` on Targets write the Rex app hosts file and reload the local Rex server ([SSH targets](ssh.md#rex-app-hosts-file-experimental)); off, Status shows how to add the host in the Rex app or with `rex hosts add` instead. `true` or `false` |
 | `keybindings` | `{}` | key overrides: panel, then action name, then a key or a list of keys ([Keys](keys.md)) |
 | `targets` | `[]` | targets listed besides the local server and the discovered hosts (below) |
 
