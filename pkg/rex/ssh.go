@@ -163,6 +163,18 @@ var plainWordRE = regexp.MustCompile(`^[A-Za-z0-9._+@/=:,-]+$`)
 // or not.
 func plainWord(s string) bool { return plainWordRE.MatchString(s) }
 
+// HostsAddHint is the command a human runs for the Rex app; lazyrex shows it
+// and never runs it.
+func HostsAddHint(label, uri string) string {
+	words := []string{"rex", "hosts", "add", label, uri}
+	for i, w := range words {
+		if !plainWord(w) {
+			words[i] = ShellQuote(w)
+		}
+	}
+	return strings.Join(words, " ")
+}
+
 const shellProbe = `echo "$SHELL"`
 
 // pathProbe single-quotes a path that is not a plain word, which POSIX
