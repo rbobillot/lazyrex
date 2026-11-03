@@ -527,6 +527,29 @@ func TestSocketURI(t *testing.T) {
 	}
 }
 
+// TestHostsAddHint (C9, C23): the command shown for the Rex app splits into
+// the five words it names, and lazyrex itself still refuses to run it.
+func TestHostsAddHint(t *testing.T) {
+	c, fr := policyClient(t, rex.Local{})
+	for _, tc := range []struct{ label, uri, want string }{
+		{"edge", "unix:///run/x.sock", "rex hosts add edge unix:///run/x.sock"},
+		{"my box", "unix:///run/x.sock", "rex hosts add 'my box' unix:///run/x.sock"},
+		{"it's", "unix:///run/x.sock", `rex hosts add 'it'\''s' unix:///run/x.sock`},
+		{"edge", "unix:///x%3Fy.sock", "rex hosts add edge 'unix:///x%3Fy.sock'"},
+	} {
+		got := rex.HostsAddHint(tc.label, tc.uri)
+		if got != tc.want {
+			t.Errorf("HostsAddHint(%q, %q) = %q, want %q", tc.label, tc.uri, got, tc.want)
+		}
+		words, err := shellSplit(got)
+		if err != nil || !slices.Equal(words, []string{"rex", "hosts", "add", tc.label, tc.uri}) {
+			t.Errorf("words of %q = %q, %v", got, words, err)
+			continue
+		}
+		assertDenied(t, c, fr, cmds.Raw(words[1:]...), got)
+	}
+}
+
 // TestCheckRexPath (1i).
 func TestCheckRexPath(t *testing.T) {
 	for _, good := range []string{"/usr/local/bin/rex", "/opt/homebrew/bin/rex", "/Applications/Rex.app/Contents/Resources/bin/rex", "/opt/my rex/rex", betaRex} {

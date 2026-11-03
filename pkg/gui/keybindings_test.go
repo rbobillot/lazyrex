@@ -2,6 +2,7 @@ package gui
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -124,6 +125,33 @@ func TestKeymapPhase2Bindings(t *testing.T) {
 	}
 	if actionOf(over, PanelClients, "<c-a>") != "runClientAction" {
 		t.Errorf("runClientAction override not applied")
+	}
+}
+
+// TestWriteRexHostsBinding (F11): w stays bound whatever
+// experimental.rex_hosts_file says, so an override of it stays valid.
+func TestWriteRexHostsBinding(t *testing.T) {
+	keysOf := func(bs []Binding) []string {
+		var out []string
+		for _, b := range BindingsFor(bs, PanelTargets) {
+			if b.Action == "writeRexHosts" {
+				out = append(out, b.Key)
+			}
+		}
+		return out
+	}
+	if k := keysOf(DefaultBindings()); !slices.Equal(k, []string{"w"}) {
+		t.Fatalf("writeRexHosts keys = %v", k)
+	}
+	over, err := ResolveBindings(map[string]map[string]config.KeyList{"targets": {"writeRexHosts": {"W"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if k := keysOf(over); !slices.Equal(k, []string{"W"}) {
+		t.Fatalf("overridden keys = %v", k)
+	}
+	if help := HelpItems(DefaultBindings(), PanelTargets); !slices.Contains(help, "w          write the Rex app hosts file (experimental, off by default)") {
+		t.Fatalf("help %q", help)
 	}
 }
 

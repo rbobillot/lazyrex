@@ -85,6 +85,31 @@ func expectNoControls(t *testing.T, what, s string) {
 	}
 }
 
+// statusColor returns the color of a Status tab's gui endpoint line, "" when
+// there is none, and fails on any other control: the only escapes allowed are
+// one fixed color at the start of that line and one reset at its end.
+func statusColor(t *testing.T, what, s string) string {
+	t.Helper()
+	color := ""
+	for _, line := range strings.Split(s, "\n") {
+		if !strings.ContainsAny(line, "\x1b\x07\u009b") {
+			continue
+		}
+		c := ""
+		for _, k := range []string{sgrGreen, sgrYellow, sgrRed} {
+			if strings.HasPrefix(line, k+"gui endpoint  ") {
+				c = k
+			}
+		}
+		inner, reset := strings.CutSuffix(strings.TrimPrefix(line, c), sgrReset)
+		if c == "" || !reset || color != "" || strings.ContainsAny(inner, "\x1b\x07\u009b") {
+			t.Fatalf("%s holds a control outside the gui endpoint color: %q", what, line)
+		}
+		color = c
+	}
+	return color
+}
+
 // TestNativeInitialLoad (1l): version and hosts list go to the home server,
 // everything else through -S.
 func TestNativeInitialLoad(t *testing.T) {

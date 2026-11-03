@@ -175,6 +175,8 @@ type State struct {
 	Targets    []TargetRow
 	Hosts      HostsState
 	RexHosts   RexHostsView
+	// RexHostsFile is experimental.rex_hosts_file, read at start.
+	RexHostsFile bool
 
 	Sessions []rex.SessionEntry
 	Data     map[rex.SessionID]*SessionData

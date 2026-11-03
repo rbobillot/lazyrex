@@ -63,7 +63,7 @@ The panel of these names is `universal`.
 | | `a` | add a config target, native or SSH | `addTarget` |
 | | `e` | edit a config target | `editTarget` |
 | | `d` | remove a config target (confirm) | `removeTarget` |
-| | `w` | write the Rex app hosts file, then reload the local Rex server (confirm each) | `writeRexHosts` |
+| | `w` | write the Rex app hosts file, then reload the local Rex server (confirm each); refused unless `experimental.rex_hosts_file` is on ([SSH targets](ssh.md#rex-app-hosts-file-experimental)) | `writeRexHosts` |
 | `sessions` | `enter` | scope Windows and Blocks to it | `scope` |
 | | `n` | new session (name, working directory) | `newSession` |
 | | `r` | rename | `renameSession` |

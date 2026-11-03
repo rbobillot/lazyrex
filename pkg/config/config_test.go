@@ -103,11 +103,58 @@ func TestExampleConfigParses(t *testing.T) {
 	if err := c.Validate(); err != nil {
 		t.Fatal(err)
 	}
+	if c.Experimental.RexHostsFile {
+		t.Error("config.example.yml turns experimental.rex_hosts_file on")
+	}
 	raw, _ := os.ReadFile(filepath.Join("..", "..", "config.example.yml"))
 	for _, key := range []string{"binary:", "timeout:", "poll_interval:", "capture_interval:", "debounce:", "max_lines:", "format:", "allow_actions:", "keybindings:",
-		"targets:", "kind:", "server:"} {
+		"targets:", "kind:", "server:", "rex_hosts_file:"} {
 		if !strings.Contains(string(raw), key) {
 			t.Errorf("config.example.yml does not document %s", key)
+		}
+	}
+}
+
+// TestExperimentalRexHostsFile (F1 to F3): experimental.rex_hosts_file is
+// off unless the file turns it on with a YAML bool. yaml.v3 also reads the
+// YAML 1.1 words yes, on, no and off into a typed bool; a misspelt key is an
+// unknown key, so it leaves the feature off.
+func TestExperimentalRexHostsFile(t *testing.T) {
+	if Default().Experimental.RexHostsFile {
+		t.Fatal("on by default")
+	}
+	if c, err := Load(filepath.Join(t.TempDir(), "nope.yml"), false); err != nil || c.Experimental.RexHostsFile {
+		t.Fatalf("missing default path: %v, %v", c.Experimental, err)
+	}
+	for body, want := range map[string]bool{
+		"rex:\n  timeout: 3s\n":                    false,
+		"experimental:\n  rex_hosts_file: true\n":  true,
+		"experimental:\n  rex_hosts_file: True\n":  true,
+		"experimental:\n  rex_hosts_file: yes\n":   true,
+		"experimental:\n  rex_hosts_file: on\n":    true,
+		"experimental:\n  rex_hosts_file: false\n": false,
+		"experimental:\n  rex_hosts_file: off\n":   false,
+		"experimental:\n  rex_hosts_file: no\n":    false,
+		"experimental:\n  rex_hosts_file:\n":       false,
+		"experimental: {}\n":                       false,
+		"experimental:\n  rex_host_file: true\n":   false,
+	} {
+		c, err := Load(write(t, body), true)
+		if err != nil || c.Experimental.RexHostsFile != want {
+			t.Errorf("%q: rex_hosts_file %v, %v; want %v", body, c.Experimental.RexHostsFile, err, want)
+		}
+	}
+	for _, body := range []string{
+		"experimental:\n  rex_hosts_file: \"true\"\n",
+		"experimental:\n  rex_hosts_file: 1\n",
+		"experimental:\n  rex_hosts_file: ture\n",
+		"experimental:\n  rex_hosts_file: [true]\n",
+		"experimental: true\n",
+		"experimental: [rex_hosts_file]\n",
+	} {
+		p := write(t, body)
+		if _, err := Load(p, true); err == nil || !strings.Contains(err.Error(), p) {
+			t.Errorf("%q: Load = %v, want an error naming %s", body, err, p)
 		}
 	}
 }

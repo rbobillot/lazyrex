@@ -348,33 +348,48 @@ type sshTransport interface {
 
 type guiLink interface{ GUIEndpoint() rex.GUIEndpoint }
 
-// gui shows the target's gui endpoint and, where there is one, its Rex app
-// host, then a blank line.
+const (
+	sgrGreen  = "\x1b[32m"
+	sgrYellow = "\x1b[33m"
+	sgrRed    = "\x1b[31m"
+	sgrReset  = "\x1b[0m"
+)
+
+// gui shows the target's gui endpoint, colored by state, and, where there is
+// one, how to add it in the Rex app, then a blank line.
 func (l *lines) gui(s *State, ep rex.GUIEndpoint) {
 	n, uri := render.Label(s.TargetName), render.Label(ep.URI)
+	var color, line string
 	hint := true
 	switch ep.State {
 	case rex.GUIForwarded:
-		l.add("gui endpoint  %s", uri)
+		color, line = sgrGreen, "gui endpoint  "+uri
 	case rex.GUIDown:
-		l.add("gui endpoint  %s (tunnel down)", uri)
+		color, line = sgrYellow, "gui endpoint  "+uri+" (tunnel down)"
 	case rex.GUIElsewhere:
-		l.add("gui endpoint  %s (served by another lazyrex for this same target; this one uses a private socket. "+
-			"Activate %s again after that one quits to take it over.)", uri, n)
+		color, line = sgrYellow, "gui endpoint  "+uri+" (served by another lazyrex for this same target; this one uses a private socket. "+
+			"Activate "+n+" again after that one quits to take it over.)"
 	case rex.GUIUnavailable:
-		l.add("gui endpoint  none: %s", render.Label(ep.Why))
-		hint = false
+		color, line, hint = sgrRed, "gui endpoint  none: "+render.Label(ep.Why), false
 	case rex.GUIExecMode:
-		l.add("gui endpoint  none: mode: exec forwards no socket. Remove mode: exec to give the Rex app an endpoint.")
-		hint = false
+		color, line, hint = sgrRed, "gui endpoint  none: mode: exec forwards no socket. Remove mode: exec to give the Rex app an endpoint.", false
 	case rex.GUIUnforwardable:
-		l.add("gui endpoint  none: the server's endpoint cannot be forwarded (%s). "+
-			"The Rex app needs Tailscale or your own ssh -L forward to reach it.", render.Label(ep.Why))
-		hint = false
+		color, line, hint = sgrRed, "gui endpoint  none: the server's endpoint cannot be forwarded ("+render.Label(ep.Why)+"). "+
+			"The Rex app needs Tailscale or your own ssh -L forward to reach it.", false
 	default:
 		return
 	}
-	if hint {
+	// The color goes on after every variable part went through render.Label.
+	l.add("%s%s%s", color, line, sgrReset)
+	switch {
+	case hint && !s.RexHostsFile:
+		l.add("")
+		l.add("Rex app: Settings > Remote Hosts > Add Remote Host, with the label %s and the endpoint %s.", n, uri)
+		l.add("Or run once (lazyrex never runs it):")
+		l.add("%s", render.Label(rex.HostsAddHint(s.TargetName, ep.URI)))
+		l.add("It works while lazyrex runs with %s active. Rex has no transport auth: only your user can open this socket.", n)
+		l.add("Rex syncs hosts to your other devices, where this path reaches nothing unless lazyrex forwards it there.")
+	case hint:
 		var b lines
 		b.rexHost(s, s.TargetName)
 		if b.b.Len() > 0 {
