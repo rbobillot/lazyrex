@@ -371,16 +371,15 @@ func TestPreparedConfirmEqualsExecuted(t *testing.T) {
 	}
 }
 
-// TestSSHMacOSFallbackGUI (C24, amended by H32): a macOS server with Rex Beta
-// and its percent-encoded endpoint comes online through the tunnel, and the
-// Status tab gives the endpoint and the state of its Rex app host.
-func TestSSHMacOSFallbackGUI(t *testing.T) {
+// macOSBeta brings a macOS server with Rex Beta and its percent-encoded
+// endpoint online through the tunnel, with lazyrex's home directory home.
+func macOSBeta(t *testing.T, home string, opts ...harnessOpt) *sshHarness {
+	t.Helper()
 	const betaRex = "/Applications/Rex Beta.app/Contents/Helpers/Rex Server.rex/Contents/MacOS/rex"
 	fr := sshRunner("/bin/zsh")
 	fr.On(pathProbeArg).Return(rextest.FixtureString("rex_path_probe_beta.txt"), "ls: /usr/local/bin/rex: No such file or directory\n", 1)
 	fr.On(quoted("whoami", "--json")...).Return(rextest.FixtureString("whoami_remote_macos.json"), "", 0)
-	home := rextest.PrivateDir(t)
-	s := newSSHHarness(t, fr, nil, withConfig(sshConfig), withInitial("remote-host"), withRexEnv(home, nil))
+	s := newSSHHarness(t, fr, nil, append([]harnessOpt{withConfig(sshConfig), withInitial("remote-host"), withRexEnv(home, nil)}, opts...)...)
 	s.waitState(rex.StateOnline)
 	tunnels := s.tunnels()
 	if len(tunnels) != 1 || !slices.Contains(tunnels[0], sshStableSock+":/Users/user/Library/Application Support/rex/server.sock") {
@@ -389,12 +388,6 @@ func TestSSHMacOSFallbackGUI(t *testing.T) {
 	if s.count("-S unix://"+sshStableSock+" ls --json") == 0 {
 		t.Fatalf("ls not read through the tunnel:\n%s", s.dumpCalls())
 	}
-	st := RenderStatus(s.st)
-	if !containsAll(st, "forward mode, tunnel up", "gui endpoint  unix://"+sshStableSock+"\n",
-		"\nRex app host remote-host-lazyrex in "+home+"/.config/rex/lazyrex-hosts.lua: not written yet\n") ||
-		strings.Contains(st, "rex hosts add") {
-		t.Fatalf("status tab:\n%s", st)
-	}
 	execCalls := fr.CallsContaining("'--autostart=false'")
 	if len(execCalls) == 0 {
 		t.Fatalf("no exec call:\n%s", s.dumpCalls())
@@ -402,6 +395,71 @@ func TestSSHMacOSFallbackGUI(t *testing.T) {
 	for _, c := range execCalls {
 		if !rextest.Contains(c, "remote-host", rex.ShellQuote(betaRex)) {
 			t.Fatalf("exec call %q does not run the Rex Beta CLI", c)
+		}
+	}
+	return s
+}
+
+// TestSSHMacOSFallbackGUI (C24, amended by H32 and K1): with the Rex app
+// hosts file on, the Status tab gives the endpoint and the state of its Rex
+// app host.
+func TestSSHMacOSFallbackGUI(t *testing.T) {
+	home := rextest.PrivateDir(t)
+	s := macOSBeta(t, home, withRexHostsFile())
+	st := RenderStatus(s.st)
+	if !containsAll(st, "forward mode, tunnel up", sgrGreen+"gui endpoint  unix://"+sshStableSock+sgrReset+"\n",
+		"\nRex app host remote-host-lazyrex in "+home+"/.config/rex/lazyrex-hosts.lua: not written yet\n") ||
+		strings.Contains(st, "rex hosts add") {
+		t.Fatalf("status tab:\n%s", st)
+	}
+}
+
+// TestSSHMacOSFallbackGUIHint (C24 before H32, F17, F25): with the Rex app
+// hosts file off, the Status tab gives the endpoint, the Rex app path and
+// the command for the Rex app, and lazyrex never looks for Rex's config.
+func TestSSHMacOSFallbackGUIHint(t *testing.T) {
+	s := macOSBeta(t, rextest.PrivateDir(t))
+	st := RenderStatus(s.st)
+	if !containsAll(st, "forward mode, tunnel up", sgrGreen+"gui endpoint  unix://"+sshStableSock+sgrReset+"\n",
+		"\nRex app: Settings > Remote Hosts > Add Remote Host, with the label remote-host and the endpoint unix://"+sshStableSock+".\n",
+		"\nOr run once (lazyrex never runs it):\n",
+		"\nrex hosts add remote-host unix://"+sshStableSock+"\n") ||
+		strings.Contains(st, "Rex app host") {
+		t.Fatalf("status tab:\n%s", st)
+	}
+	if n := s.rexReads.Load(); n != 0 {
+		t.Fatalf("read lazyrex's environment %d times", n)
+	}
+}
+
+// TestSSHStatusColorConfined (F26, F27): the color of the gui endpoint line
+// stays on that line of the Status tab, and a search in the main view still
+// finds it.
+func TestSSHStatusColorConfined(t *testing.T) {
+	for _, on := range []bool{false, true} {
+		opts := []harnessOpt{withConfig(sshConfig), withInitial("remote-host"), withRexEnv(rextest.PrivateDir(t), nil)}
+		if on {
+			opts = append(opts, withRexHostsFile())
+		}
+		s := newSSHHarness(t, sshRunner("/bin/bash"), nil, opts...)
+		s.waitState(rex.StateOnline)
+		s.selectTarget("remote-host")
+		for _, r := range s.rows(PanelTargets) {
+			expectNoControls(t, "row", r)
+		}
+		expectNoControls(t, "log", s.logText())
+		expectNoControls(t, "footer", Footer(s.st, s.ctrl.Bindings(PanelTargets)))
+		expectNoControls(t, "subtitle", TargetsSubtitle(s.st))
+		if got := statusColor(t, "status tab", s.st.Main.Content); got != sgrGreen {
+			t.Fatalf("on %v: color %q:\n%q", on, got, s.st.Main.Content)
+		}
+		line := slices.IndexFunc(strings.Split(s.st.Main.Content, "\n"), func(l string) bool {
+			return strings.HasPrefix(l, sgrGreen+"gui endpoint  unix://"+sshStableSock)
+		})
+		s.dispatch(PanelMain, "filter")
+		s.answer("gui endpoint")
+		if line < 0 || !slices.Equal(s.st.Main.Matches, []int{line}) {
+			t.Fatalf("on %v: matches %v, want [%d]:\n%s", on, s.st.Main.Matches, line, s.st.Main.Content)
 		}
 	}
 }

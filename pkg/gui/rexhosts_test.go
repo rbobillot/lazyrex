@@ -76,6 +76,9 @@ type rexSetup struct {
 	hosts     func(run string) []host
 	file      func(run string) []byte
 	opts      []harnessOpt
+	// off leaves experimental.rex_hosts_file to the config file, off unless
+	// cfg turns it on.
+	off bool
 }
 
 type rexHarness struct {
@@ -120,8 +123,11 @@ func newRexHarness(t *testing.T, s rexSetup) *rexHarness {
 	if cfg == "" {
 		cfg = rexCfg
 	}
-	opts := append([]harnessOpt{withRunner(fr), withConfig(cfg), withSSH(rextest.SSHEnv(r.run, &rextest.FakeSockets{})),
-		withRexEnv(r.home, env)}, s.opts...)
+	opts := []harnessOpt{withRunner(fr), withConfig(cfg), withSSH(rextest.SSHEnv(r.run, &rextest.FakeSockets{})), withRexEnv(r.home, env)}
+	if !s.off {
+		opts = append(opts, withRexHostsFile())
+	}
+	opts = append(opts, s.opts...)
 	r.harness = newHarness(t, opts...)
 	return r
 }
@@ -173,9 +179,9 @@ func (r *rexHarness) status(name string) string {
 	st := NewState()
 	st.TargetName = name
 	st.Transport = fakeGUILink{ep: rex.GUIEndpoint{State: rex.GUIForwarded, URI: "unix:///gui.sock"}}
-	st.RexHosts, st.Hosts = r.st.RexHosts, r.st.Hosts
+	st.RexHosts, st.Hosts, st.RexHostsFile = r.st.RexHosts, r.st.Hosts, r.st.RexHostsFile
 	out := RenderStatus(st)
-	_, after, ok := strings.Cut(out, "gui endpoint  unix:///gui.sock\n\n")
+	_, after, ok := strings.Cut(out, "gui endpoint  unix:///gui.sock"+sgrReset+"\n\n")
 	b, _, found := strings.Cut(after, "event stream")
 	if !ok || !found {
 		r.t.Fatalf("status tab:\n%s", out)
@@ -502,7 +508,7 @@ func TestRexHostsReloadFromRemote(t *testing.T) {
 			}
 			ui := &pumpUI{}
 			h := newHarness(t, withRunner(fr), withUI(ui), withSSH(rextest.SSHEnv(run, &rextest.FakeSockets{})),
-				withConfig(cfg), withInitial("remote-host"), withRexEnv(home, nil))
+				withConfig(cfg), withInitial("remote-host"), withRexEnv(home, nil), withRexHostsFile())
 			s := &sshHarness{harness: h, ui: ui}
 			s.waitState(rex.StateOnline)
 			s.do(PanelTargets, "writeRexHosts")
@@ -964,16 +970,16 @@ func TestRexHostsNoTarget(t *testing.T) {
 // directory error or REX_SERVER turn the feature off without touching any
 // file.
 func TestRexHostsUnavailable(t *testing.T) {
-	h := newHarness(t, withConfig(rexCfg), withSSH(rextest.SSHEnv(rextest.PrivateDir(t), &rextest.FakeSockets{})))
+	h := newHarness(t, withConfig(rexCfg), withSSH(rextest.SSHEnv(rextest.PrivateDir(t), &rextest.FakeSockets{})), withRexHostsFile())
 	h.focus(PanelTargets)
 	h.dispatch(PanelTargets, "writeRexHosts")
-	if p := h.ctrl.Popups.Top(); p == nil || p.Kind != PopupError || !strings.HasPrefix(p.Body, "the Rex app hosts file is not available: ") {
+	if p := h.ctrl.Popups.Top(); p == nil || p.Kind != PopupError || p.Body != "the Rex app hosts file is not available: it needs lazyrex's environment" {
 		t.Fatalf("popup %+v", p)
 	}
 	st := NewState()
 	st.TargetName, st.Transport = "edge", fakeGUILink{ep: rex.GUIEndpoint{State: rex.GUIForwarded, URI: "unix:///gui.sock"}}
-	st.RexHosts = h.st.RexHosts
-	if out := RenderStatus(st); strings.Contains(out, "Rex app host") {
+	st.RexHosts, st.RexHostsFile = h.st.RexHosts, h.st.RexHostsFile
+	if out := RenderStatus(st); strings.Contains(out, "Rex app host") || strings.Contains(out, "rex hosts add") {
 		t.Fatalf("status tab:\n%s", out)
 	}
 

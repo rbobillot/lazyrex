@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -91,6 +92,8 @@ type harness struct {
 	client  *rex.Client
 	cfgPath string
 	streams []streamStart
+	// rexReads counts the calls of Options.Env and Options.HomeDir.
+	rexReads atomic.Int64
 }
 
 // streamStart is one event stream the controller started.
@@ -116,14 +119,18 @@ type harnessCfg struct {
 	sshFlag   *string
 	rexHome   *string
 	rexEnv    map[string]string
+	rexOn     bool
 	plain     bool
 }
 
-// withRexEnv turns the Rex app hosts file on: lazyrex's environment is env
-// and its home directory home.
+// withRexEnv gives the Rex app hosts file lazyrex's environment env and its
+// home directory home.
 func withRexEnv(home string, env map[string]string) harnessOpt {
 	return func(c *harnessCfg) { c.rexHome, c.rexEnv = &home, env }
 }
+
+// withRexHostsFile turns experimental.rex_hosts_file on, whatever the config file says.
+func withRexHostsFile() harnessOpt { return func(c *harnessCfg) { c.rexOn = true } }
 
 // withoutEnvRunner hides the runner's RunEnv from the client.
 func withoutEnvRunner() harnessOpt { return func(c *harnessCfg) { c.plain = true } }
@@ -187,8 +194,8 @@ func newHarness(t *testing.T, opts ...harnessOpt) *harness {
 		SSH: cfg.ssh, SSHConfigHosts: cfg.sshHosts}
 	if cfg.rexHome != nil {
 		env, home := cfg.rexEnv, *cfg.rexHome
-		o.Env = func(k string) string { return env[k] }
-		o.HomeDir = func() (string, error) { return home, nil }
+		o.Env = func(k string) string { h.rexReads.Add(1); return env[k] }
+		o.HomeDir = func() (string, error) { h.rexReads.Add(1); return home, nil }
 	}
 	if cfg.config != nil || cfg.initial != nil || cfg.sshFlag != nil {
 		if cfg.config != nil {
@@ -222,6 +229,9 @@ func newHarness(t *testing.T, opts ...harnessOpt) *harness {
 			o.Flag = &flag
 		}
 		o.Targets, o.Initial = targets, all[idx].Name
+	}
+	if cfg.rexOn {
+		o.Config.Experimental.RexHostsFile = true
 	}
 	if cfg.streams {
 		o.StartStream = func(ctx context.Context, sup *rex.Supervisor) { h.streams = append(h.streams, streamStart{ctx, sup}) }
