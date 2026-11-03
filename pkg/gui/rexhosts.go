@@ -55,9 +55,15 @@ type rexHostsLoad struct {
 	data    []byte
 }
 
-// rexHostsOff says why the feature is off from the start.
+const rexHostsFlagOff = "experimental.rex_hosts_file is off in lazyrex's config file (the Rex app does not show declared hosts yet); turn it on, then restart lazyrex"
+
+// rexHostsOff says why the feature is off from the start. The flag comes
+// first: off, lazyrex never calls env or homeDir for the feature.
 func (c *Controller) rexHostsOff() string {
-	if c.env == nil || c.homeDir == nil {
+	switch {
+	case !c.rexHostsFile:
+		return rexHostsFlagOff
+	case c.env == nil || c.homeDir == nil:
 		return "it needs lazyrex's environment"
 	}
 	return ""

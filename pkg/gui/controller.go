@@ -49,7 +49,8 @@ type Options struct {
 	SSH *rex.SSHEnv
 	// SSHConfigHosts are the ~/.ssh/config aliases offered by addTarget.
 	SSHConfigHosts []string
-	// Env and HomeDir locate the Rex app hosts file; nil turns it off.
+	// Env and HomeDir locate the Rex app hosts file; nil turns it off, as does
+	// experimental.rex_hosts_file off.
 	Env     func(string) string
 	HomeDir func() (string, error)
 }
@@ -108,6 +109,9 @@ type Controller struct {
 	// successful reload of the local server.
 	hostsStarted, hostsApplied, reloadAfter uint64
 	reloaded                                bool
+	// rexHostsFile is experimental.rex_hosts_file, read at start only: a
+	// later config edit must not turn the feature on or off.
+	rexHostsFile bool
 	// rh is the last look at the Rex app hosts file, numbered rhApplied.
 	env                 func(string) string
 	homeDir             func() (string, error)
@@ -155,8 +159,9 @@ func NewController(st *State, client *rex.Client, ui UI, o Options) *Controller 
 		st: st, client: client, ui: ui, clock: clock, cfg: o.Config, bindings: o.Bindings,
 		root: context.Background(), captureFormat: o.Config.Capture.Format, stream: o.StartStream,
 		cfgTargets: o.Targets, flag: o.Flag, file: o.File, ssh: o.SSH, sshHosts: o.SSHConfigHosts,
-		env: o.Env, homeDir: o.HomeDir, writeHosts: rexhosts.Write,
+		env: o.Env, homeDir: o.HomeDir, writeHosts: rexhosts.Write, rexHostsFile: o.Config.Experimental.RexHostsFile,
 	}
+	st.RexHostsFile = c.rexHostsFile
 	if c.stream == nil {
 		c.stream = func(ctx context.Context, sup *rex.Supervisor) { go sup.Run(ctx) }
 	}
